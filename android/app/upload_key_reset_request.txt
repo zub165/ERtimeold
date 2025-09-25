@@ -1,0 +1,32 @@
+Google Play Console Upload Key Reset Request
+
+App Details:
+- Package Name: com.easytechnologiez.ERTime
+- App Name: ER Wait Time - Emergency Wait
+- Current App Version: 1.0.3 (last successfully uploaded)
+- New Version: 1.0.4
+
+Issue:
+The original signing key for this app is no longer accessible. We need to reset the upload key to continue updating the app.
+
+Expected Certificate SHA1: D1:F7:F3:D4:EE:45:4D:28:A8:AB:CD:6E:07:D8:FA:20:BC:10:2E:AC
+New Upload Certificate SHA1: 76:00:49:6E:F1:77:66:54:A2:7E:5D:80:A2:7F:00:83:7F:47:AE:0F
+New Upload Certificate SHA256: DE:4D:D4:48:3F:57:F2:8D:43:F8:67:86:A7:7B:E7:03:2D:F2:1C:1B:EE:75:B0:BA:DC:F2:AD:3F:44:C8:FD:57
+
+Reason for Reset:
+- Original keystore file password is not available
+- App was originally developed with different development environment
+- Need to continue app updates with new signing key
+
+New Upload Certificate Details:
+- Owner: CN=ER Time, OU=Development, O=EasyTechnologiez, L=City, ST=State, C=US
+- Valid until: Fri Sep 16 09:17:31 EDT 2050 (25 years validity)
+- Algorithm: SHA256withRSA with 2048-bit RSA key
+- Serial Number: 2dad719538a6d522
+- Generated following Google Play Developer Support specifications
+
+Please find the new upload certificate attached as upload_certificate.pem
+
+Date: September 22, 2025
+Developer: EasyTechnologiez
+Contact: [drzubairmalik@gmail.com]
