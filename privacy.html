@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,15 +67,37 @@
             border-left: 4px solid #28a745;
             margin: 20px 0;
         }
+        .medical-disclaimer {
+            background: #f8d7da;
+            padding: 15px;
+            border-left: 4px solid #dc3545;
+            margin: 20px 0;
+        }
+        .emergency-info {
+            background: #d1ecf1;
+            padding: 15px;
+            border-left: 4px solid #17a2b8;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Privacy Policy</h1>
-        <p class="last-updated">Last updated: September 24, 2024</p>
+        <p class="last-updated">Last updated: October 2, 2024</p>
+        
+        <div class="emergency-info">
+            <h3>🚨 EMERGENCY NOTICE</h3>
+            <p><strong>For life-threatening emergencies, call 911 immediately.</strong> This app is for informational purposes only and should not be used for critical medical decisions.</p>
+        </div>
         
         <h2>Introduction</h2>
         <p>Welcome to ER Wait Time ("we," "our," or "us"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application ER Wait Time - Emergency Wait (the "App"). Please read this privacy policy carefully. If you do not agree with the terms of this privacy policy, please do not access the application.</p>
+
+        <div class="medical-disclaimer">
+            <h3>Medical Disclaimer</h3>
+            <p><strong>This app does not provide medical advice, diagnosis, or treatment.</strong> All wait time data is estimated and for informational purposes only. In medical emergencies, call 911 immediately.</p>
+        </div>
 
         <h2>Information We Collect</h2>
         
@@ -82,6 +105,7 @@
         <ul>
             <li><strong>Account Information:</strong> Email address and password when you create an account</li>
             <li><strong>Feedback:</strong> Hospital ratings, comments, and wait time reports you voluntarily submit</li>
+            <li><strong>Profile Information:</strong> First name and last name (optional)</li>
         </ul>
 
         <h3>Information We Collect Automatically</h3>
@@ -89,6 +113,7 @@
             <li><strong>Location Data:</strong> Your approximate location to find nearby hospitals (only when you grant permission)</li>
             <li><strong>Usage Data:</strong> App features you use, time spent in the app, and crash reports</li>
             <li><strong>Device Information:</strong> Device type, operating system version, and app version</li>
+            <li><strong>Search Data:</strong> Hospital searches and filters you use (anonymized)</li>
         </ul>
 
         <div class="no-data">
@@ -99,6 +124,8 @@
                 <li>Contact lists or phone numbers (except for hospital contact info)</li>
                 <li>Browsing history or other app usage</li>
                 <li>Financial or payment information</li>
+                <li>Social media accounts or profiles</li>
+                <li>Biometric data or health metrics</li>
             </ul>
         </div>
 
@@ -124,6 +151,7 @@
             <li><strong>Legal Requirements:</strong> When required by law or to protect our rights and safety</li>
             <li><strong>Business Transfers:</strong> In connection with a merger, acquisition, or sale of assets</li>
             <li><strong>Aggregated Data:</strong> Anonymous, aggregated statistics that cannot identify you</li>
+            <li><strong>Emergency Situations:</strong> To protect the safety of users or the public</li>
         </ul>
 
         <h2>Third-Party Services</h2>
@@ -132,10 +160,13 @@
         <p>We use Google Maps to display hospital locations and provide directions. Google's privacy policy applies to their services: <a href="https://policies.google.com/privacy" target="_blank">https://policies.google.com/privacy</a></p>
 
         <h3>Django Backend</h3>
-        <p>Our app connects to our secure Django backend server to retrieve hospital data and process your feedback. All data transmission is encrypted.</p>
+        <p>Our app connects to our secure Django backend server (http://208.109.215.53:3015/api) to retrieve hospital data and process your feedback. All data transmission is encrypted using HTTPS.</p>
 
         <h3>Analytics</h3>
         <p>We may use analytics services to understand app usage patterns. These services collect anonymous usage statistics.</p>
+
+        <h3>AdMob (Google)</h3>
+        <p>We use Google AdMob to display advertisements. Google's privacy policy applies: <a href="https://policies.google.com/privacy" target="_blank">https://policies.google.com/privacy</a></p>
 
         <h2>Data Security</h2>
         <p>We implement appropriate technical and organizational security measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction. However, no method of transmission over the internet or electronic storage is 100% secure.</p>
@@ -179,6 +210,12 @@
             
             <h3>CCPA Compliance</h3>
             <p>For users in California, we comply with the California Consumer Privacy Act (CCPA) and provide the rights described in this policy.</p>
+            
+            <h3>COPPA Compliance</h3>
+            <p>We do not knowingly collect information from children under 13 years of age.</p>
+            
+            <h3>HIPAA Disclaimer</h3>
+            <p>This app is not a covered entity under HIPAA and does not handle protected health information.</p>
         </div>
 
         <div class="contact-info">
@@ -192,13 +229,17 @@
             
             <h3>Data Deletion Requests</h3>
             <p>To request deletion of your personal data, please email us at <strong>zub165@yahoo.com</strong> with the subject line "Data Deletion Request" and include your registered email address.</p>
+            
+            <h3>Response Time</h3>
+            <p>We will respond to privacy-related inquiries within 30 days of receipt.</p>
         </div>
 
         <hr style="margin: 40px 0; border: none; border-top: 1px solid #ddd;">
         
         <p style="text-align: center; color: #7f8c8d; font-size: 0.9em;">
-            © 2024 Easy Technologies. All rights reserved.<br>
-            ER Wait Time - Emergency Wait Time Tracker
+            © 2024 Easy Technologiez. All rights reserved.<br>
+            ER Wait Time - Emergency Wait Time Tracker<br>
+            Version 2.1.9 | Last Updated: October 2, 2024
         </p>
     </div>
 </body>
