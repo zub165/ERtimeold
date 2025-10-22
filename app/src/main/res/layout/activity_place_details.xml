@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<ScrollView  xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:background="@color/colorPrimary"
+    android:layout_height="match_parent">
+
+<RelativeLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".PlaceDetailsActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:layout_centerHorizontal="true"
+        android:id="@+id/name_layout"
+        android:layout_margin="10dp">
+    <ImageView
+        android:id="@+id/PlaceIcon"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:src="@drawable/ic_action_hospital"
+        android:layout_weight="1" />
+        <TextView
+            android:id="@+id/place_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="Loading..."
+            android:layout_marginLeft="15sp"
+            android:gravity="center"
+            android:textColor="@color/colorWhite"
+            android:layout_weight="1"/>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@+id/name_layout"
+        android:id="@+id/location_layout"
+        android:layout_margin="10dp">
+        <fragment
+            android:id="@+id/map"
+            android:name="com.google.android.gms.maps.SupportMapFragment"
+            android:layout_width="match_parent"
+            android:layout_height="250dp"
+            tools:context=".PlaceDetailsActivity" />
+       <!-- <TextView
+            android:id="@+id/place_location"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="Loading..."
+            android:textColor="@color/colorWhite"
+            android:layout_weight="1"/>-->
+
+    </LinearLayout>
+
+   <!-- <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@+id/location_layout"
+        android:id="@+id/place_pid_layout"
+        android:layout_margin="10dp">
+        <TextView
+            android:id="@+id/PlacePIdLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_weight="1"
+            android:textColor="@color/colorWhite"
+            android:text="Place ID" />
+        <TextView
+            android:id="@+id/place_place_id"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="Loading..."
+            android:textColor="@color/colorWhite"
+            android:layout_weight="1"/>
+
+    </LinearLayout>-->
+
+   <!-- <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@+id/place_pid_layout"
+        android:id="@+id/id_layout"
+        android:layout_margin="10dp">
+        <TextView
+            android:id="@+id/PlaceIdLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_weight="1"
+            android:textColor="@color/colorWhite"
+            android:text="ID" />
+        <TextView
+            android:id="@+id/place_id"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="Loading..."
+            android:textColor="@color/colorWhite"
+            android:layout_weight="1"/>
+
+    </LinearLayout>-->
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@+id/location_layout"
+        android:id="@+id/address_layout"
+        android:layout_margin="10dp">
+        <TextView
+            android:id="@+id/PlaceAddressLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_weight="1"
+            android:textColor="@color/colorWhite"
+            android:text="Go to " />
+        <TextView
+            android:id="@+id/place_address"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="Loading..."
+            android:textColor="@color/colorWhite"
+            android:layout_weight="1"/>
+
+    </LinearLayout>
+
+   <!-- <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@+id/address_layout"
+        android:id="@+id/icon_layout"
+        android:layout_margin="10dp">
+        <TextView
+            android:id="@+id/PlaceIconLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_weight="1"
+            android:textColor="@color/colorWhite"
+            android:text="Icon" />
+        <TextView
+            android:id="@+id/place_icon"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="Loading..."
+            android:textColor="@color/colorWhite"
+            android:layout_weight="1"/>
+
+    </LinearLayout>-->
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@+id/address_layout"
+        android:id="@+id/phone_layout"
+        android:layout_margin="10dp">
+        <TextView
+            android:id="@+id/PlacePhoneLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:textColor="@color/colorWhite"
+            android:layout_weight="1"
+            android:text="Phone" />
+        <TextView
+            android:id="@+id/place_phone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="Loading..."
+            android:textColor="@color/colorWhite"
+            android:layout_weight="1"/>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@+id/phone_layout"
+        android:id="@+id/url_layout"
+        android:layout_margin="10dp">
+        <TextView
+            android:id="@+id/PlaceUrlLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/colorWhite"
+            android:layout_gravity="center_horizontal"
+            android:layout_weight="1"
+            android:text="Website" />
+        <TextView
+            android:id="@+id/place_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="Loading..."
+            android:textColor="@color/colorWhite"
+            android:inputType="textWebEditText"
+            android:layout_weight="1"/>
+
+    </LinearLayout>
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@+id/url_layout"
+        android:id="@+id/feedback_layout"
+        android:visibility="gone"
+        android:background="@color/colorWhite"
+        android:layout_margin="10dp">
+        <TextView
+            android:id="@+id/wait"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:layout_alignParentLeft="true"
+            android:text="My wait time"/>
+
+        <TextView
+            android:id="@+id/min"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBaseline="@+id/wait"
+            android:layout_centerHorizontal="true"
+            android:text="15" />
+
+        <RatingBar
+            android:id="@+id/ratingBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerHorizontal="true"
+            android:theme="@style/RatingBar"
+            android:isIndicator="true"
+            android:layout_below="@+id/min"
+            android:rating="3"
+            android:layout_marginTop="10dp" />
+
+        <TextView
+            android:id="@+id/edit_rating"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_alignParentRight="true"
+            android:layout_centerVertical="true"
+            android:layout_marginRight="10dp"
+            android:background="@color/colorAccent"
+            android:gravity="center"
+            android:textColor="@color/colorWhite"
+            android:padding="5dp"
+            android:text="Edit" />
+
+        <TextView
+            android:id="@+id/comment"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="10dp"
+            android:ems="10"
+            android:layout_below="@id/ratingBar"
+            android:text="Comment"/>
+
+
+
+    </RelativeLayout>
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@+id/feedback_layout"
+        android:id="@+id/feedback_layout_avg"
+        android:visibility="gone"
+        android:background="@color/colorWhite"
+        android:layout_margin="10dp">
+        <TextView
+            android:id="@+id/wait_avg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:layout_alignParentLeft="true"
+            android:text="Average wait time"/>
+
+        <TextView
+            android:id="@+id/min_avg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBaseline="@+id/wait_avg"
+            android:layout_centerHorizontal="true"
+            android:text="15" />
+
+        <RatingBar
+            android:id="@+id/ratingBar_avg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerHorizontal="true"
+            android:theme="@style/RatingBar"
+            android:isIndicator="true"
+            android:layout_below="@+id/min_avg"
+            android:rating="3"
+            android:layout_marginTop="10dp" />
+
+       <!-- <TextView
+            android:id="@+id/comment_avg"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="10dp"
+            android:ems="10"
+            android:layout_below="@id/ratingBar_avg"
+            android:text="Comment"/>-->
+
+
+
+    </RelativeLayout>
+
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/feedback_button_layout"
+        android:layout_below="@+id/feedback_layout_avg">
+
+
+        <ProgressBar
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:id="@+id/progressBar"
+
+            android:layout_centerHorizontal="true"/>
+
+
+        <Button
+            android:id="@+id/click"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentRight="true"
+            android:layout_alignParentEnd="true"
+            android:layout_alignParentBottom="true"
+            android:layout_margin="10dp"
+            android:visibility="gone"
+            android:layout_marginBottom="15dp"
+            android:textColor="@color/colorWhite"
+            android:background="@drawable/button_selector_feedback"
+            android:text="FeedBack" />
+
+    </RelativeLayout>
+
+
+
+</RelativeLayout>
+
+</ScrollView>

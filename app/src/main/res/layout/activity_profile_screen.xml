@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context="com.easytechnologiez.ERTime.ProfileScreen"
+    android:background="@color/gray">
+<RelativeLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="300dp"
+        android:layout_centerHorizontal="true"
+        android:layout_alignParentTop="true"
+        android:id="@+id/redLayout">
+        <LinearLayout
+            android:background="@color/colorPrimary"
+            android:layout_width="match_parent"
+            android:layout_height="270dp"
+            android:orientation="vertical">
+            <ImageView
+                android:layout_marginTop="25dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_width="125dp"
+                android:id="@+id/profile"
+                android:layout_height="125dp"
+                android:src="@mipmap/profile"/>
+            <TextView
+                android:layout_gravity="center_horizontal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Wiliam Snoe"
+                android:id="@+id/f_name"
+                android:textColor="#fff"
+                android:textStyle="bold"
+                android:textSize="20sp"/>
+        </LinearLayout>
+        <android.support.v7.widget.CardView
+            android:layout_width="400dp"
+            android:layout_height="100dp"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="200dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:weightSum="3">
+                <LinearLayout
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:id="@+id/blood_layout1"
+                    android:layout_height="match_parent">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:text="Blood Group"
+                        android:id="@+id/blood_label"
+                        android:textSize="17sp"
+                        />
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="AB+"
+                        android:id="@+id/blood"
+                        android:textStyle="bold"
+                        android:textSize="18sp"
+                        android:paddingTop="10dp"
+                        android:textColor="@color/colorPrimary"/>
+
+                        <ImageView
+                            android:layout_width="25dp"
+                            android:id="@+id/edit_blood"
+                            android:layout_height="25dp"
+                            android:src="@drawable/ic_action_edit1"/>
+
+                    </LinearLayout>
+
+                </LinearLayout>
+                <LinearLayout
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:id="@+id/weight_layout1"
+                    android:layout_height="match_parent">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Weight"
+                        android:id="@+id/weight_label"
+                        android:textSize="18sp"
+                        />
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="not set"
+                        android:textStyle="bold"
+                        android:textSize="16sp"
+                        android:id="@+id/weight"
+                        android:paddingTop="10dp"
+                        android:textColor="@color/colorPrimary"/>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=" lbs"
+                            android:textStyle="bold"
+                            android:textSize="12sp"
+                            android:id="@+id/weight_unit"
+                            android:paddingTop="10dp"
+                            android:textColor="@color/colorPrimary"/>
+                        <ImageView
+                            android:layout_width="25dp"
+                            android:id="@+id/edit_weight"
+                            android:layout_height="25dp"
+                            android:src="@drawable/ic_action_edit1"/>
+
+                    </LinearLayout>
+
+
+                </LinearLayout>
+                <LinearLayout
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:layout_width="0dp"
+                    android:id="@+id/height_layout1"
+                    android:layout_weight="1"
+                    android:layout_height="match_parent">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Height"
+                        android:id="@+id/height_label"
+                        android:textSize="18sp" />
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="not set"
+                        android:id="@+id/height"
+                        android:textStyle="bold"
+                        android:textSize="17sp"
+                        android:paddingTop="10dp"
+                        android:textColor="@color/colorPrimary"/>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=" cm"
+                            android:id="@+id/height_unit"
+                            android:textStyle="bold"
+                            android:textSize="12sp"
+                            android:paddingTop="10dp"
+                            android:textColor="@color/colorPrimary"/>
+                        <ImageView
+                            android:layout_width="25dp"
+                            android:id="@+id/edit_height"
+                            android:layout_height="25dp"
+                            android:src="@drawable/ic_action_edit1"/>
+
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+        </android.support.v7.widget.CardView>
+    </RelativeLayout>
+
+    <LinearLayout
+        android:layout_width="360dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="center"
+        android:layout_marginTop="15dp"
+        android:id="@+id/whiteLayout"
+        android:layout_below="@+id/redLayout">
+        <LinearLayout
+            android:orientation="horizontal"
+            android:paddingLeft="25dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_action_email"/>
+            <TextView
+                android:textStyle="bold"
+                android:layout_gravity="center_vertical"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingLeft="20dp"
+                android:id="@+id/email"
+                android:text="Wiliam@gmail.com"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_marginTop="25dp"
+            android:orientation="horizontal"
+            android:paddingLeft="25dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_action_drop"/>
+            <TextView
+                android:textStyle="bold"
+                android:id="@+id/location"
+                android:layout_gravity="center_vertical"
+                android:layout_width="wrap_content"
+                android:maxLines="2"
+                android:layout_height="wrap_content"
+                android:paddingLeft="20dp"
+                android:text="Click for Permission"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_marginTop="25dp"
+            android:orientation="horizontal"
+            android:paddingLeft="25dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_action_card"/>
+            <TextView
+                android:textStyle="bold"
+                android:id="@+id/card"
+                android:layout_gravity="center_vertical"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingLeft="20dp"
+                android:text="Health Card"/>
+        </LinearLayout>
+        <LinearLayout
+            android:layout_marginTop="25dp"
+            android:orientation="horizontal"
+            android:paddingLeft="25dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:id="@+id/distance"
+                android:src="@drawable/ic_action_distance"/>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal"
+                    android:weightSum="4">
+                <SeekBar
+                    android:id="@+id/radious"
+                    android:layout_gravity="center_vertical"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:paddingLeft="20dp"
+                    android:min="1"
+                    android:max="100"
+                    android:progress="10"
+                    android:layout_weight="3"
+                    android:text=""/>
+
+                <TextView
+                    android:textStyle="bold"
+                    android:id="@+id/units"
+                    android:layout_weight="1"
+                    android:layout_gravity="center_vertical"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:paddingLeft="20dp"
+                    android:text="10 KM "/>
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/search"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/button_selector"
+        android:text="Search "
+        android:layout_below="@+id/whiteLayout"
+        android:textColor="#fff" />
+
+    <com.google.android.gms.ads.AdView android:id="@+id/Ads"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_alignParentBottom="true"
+        android:layout_below="@+id/search"
+        android:layout_marginBottom="2dp"
+        app:adSize="BANNER"
+        app:adUnitId="@string/admob_banner_id"/>
+
+</RelativeLayout>
+
+</ScrollView>

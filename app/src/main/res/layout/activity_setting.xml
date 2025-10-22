@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    xmlns:apps="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <ListView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:id="@+id/setting_list"
+        android:layout_centerInParent="true"
+        android:layout_above="@+id/Ads">
+
+    </ListView>
+    <com.google.android.gms.ads.AdView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/Ads"
+        android:layout_alignParentBottom="true"
+        apps:adSize="LARGE_BANNER"
+        android:layout_centerHorizontal="true"
+        apps:adUnitId="@string/admob_banner_id">
+
+    </com.google.android.gms.ads.AdView>
+
+</RelativeLayout>
