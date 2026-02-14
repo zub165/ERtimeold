@@ -16,7 +16,12 @@ class HospitalProvider with ChangeNotifier {
     _hospitals = hospitals;
     notifyListeners();
   }
-  
+
+  void appendHospitals(List<Hospital> more) {
+    _hospitals.addAll(more);
+    notifyListeners();
+  }
+
   void addHospital(Hospital hospital) {
     _hospitals.add(hospital);
     notifyListeners();

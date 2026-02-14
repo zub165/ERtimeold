@@ -2,7 +2,7 @@ name: er_wait_time_flutter
 description: "ER Wait Time - Emergency Room Wait Time Tracker with AI-powered Django backend"
 publish_to: 'none'
 
-version: 2.0.6+6
+version: 2.0.8+8
 
 environment:
   sdk: ^3.8.1
@@ -29,6 +29,9 @@ dependencies:
   location: ^7.0.0
   geolocator: ^13.0.1
   google_maps_flutter: ^2.5.0
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  # tomtom_sdk_maps: ^0.1.0  # TomTom SDK (optional, requires key)
   # tomtom_sdk_search: ^1.0.0  # Will add later
   
   # State Management

@@ -2,8 +2,8 @@ class AppConfig {
   // App Information
   static const String appName = 'ER Wait Time';
   static const String packageName = 'com.easytechnologiez.ERTime';
-  static const String version = '1.0.3';
-  static const int versionCode = 3;
+  static const String version = '2.0.8';
+  static const int versionCode = 8;
   
   // Map API Keys - Retrieved dynamically from Django backend or user input
   static String? googleMapsApiKey;
@@ -20,7 +20,8 @@ class AppConfig {
   static bool useTomTomMaps = false;
   
   // Django Backend Configuration (Primary Database)
-  static const String djangoBaseUrl = 'http://208.109.215.53:3015/api';
+  // Production behind Nginx (HTTPS)
+  static const String djangoBaseUrl = 'https://api.mywaitime.com/api';
   static const String djangoPassword = 'Bismilah165\$';
   
   // Database Configuration - Using Django PostgreSQL/MySQL Backend

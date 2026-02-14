@@ -77,11 +77,14 @@ class MockDataService {
         id: 'mock_\$i',
         name: data['name'],
         address: '${100 + i * 50} Medical Plaza Dr, Health City, HC ${10000 + i}',
+        city: 'Health City',
+        state: 'HC',
         latitude: hospitalLat,
         longitude: hospitalLng,
         distance: actualDistance,
         rating: double.parse(rating.toStringAsFixed(1)),
         phone: data['phone'],
+        website: '',
         specialties: List<String>.from(data['specialties']),
         imageUrl: '', // No images for mock data
       ));

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 class DebugScreen extends StatefulWidget {
   @override
@@ -19,7 +18,7 @@ class _DebugScreenState extends State<DebugScreen> {
     
     try {
       final response = await http.get(
-        Uri.parse('http://208.109.215.53:3015/api/hospitals/?lat=37.7749&lng=-122.4194&radius=10'),
+        Uri.parse('https://api.mywaitime.com/api/hospitals/?lat=37.7749&lng=-122.4194&radius=10'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -27,10 +26,10 @@ class _DebugScreenState extends State<DebugScreen> {
       ).timeout(Duration(seconds: 10));
       
       setState(() {
-        _result = 'Status: \${response.statusCode}\\n'
-                 'Headers: \${response.headers}\\n'
-                 'Body length: \${response.body.length}\\n'
-                 'First 500 chars: \${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}';
+        _result = 'Status: ${response.statusCode}\\n'
+            'Headers: ${response.headers}\\n'
+            'Body length: ${response.body.length}\\n'
+            'First 500 chars: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}';
       });
     } catch (e) {
       setState(() {
@@ -54,7 +53,22 @@ class _DebugScreenState extends State<DebugScreen> {
       body: Padding(
         padding: EdgeInsets.all(20),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Data source info
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Hospital list: Django + OpenStreetMap + TomTom + Google (all merged & deduplicated). '
+                'Map tiles: Google or TomTom. Add API keys in Settings for TomTom/Google.',
+                style: TextStyle(fontSize: 12, color: Colors.blue[900]),
+              ),
+            ),
+            SizedBox(height: 12),
             // Connection Status Indicator
             Container(
               padding: EdgeInsets.all(15),

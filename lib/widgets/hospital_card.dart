@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../services/django_api_service.dart';
 import '../config/units_config.dart';
+import '../services/django_api_service.dart';
 import '../screens/hospital_detail_screen.dart';
+import '../providers/hospital_provider.dart';
 
 class HospitalCard extends StatelessWidget {
   final Hospital hospital;
-  
+
   const HospitalCard({Key? key, required this.hospital}) : super(key: key);
   
   @override
@@ -91,6 +93,45 @@ class HospitalCard extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        SizedBox(height: 4),
+                        
+                        // Phone Number (if available or show fallback) - Clickable
+                        GestureDetector(
+                          onTap: hospital.phone.isNotEmpty 
+                            ? () => _callHospital(context, hospital)
+                            : null,
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.phone,
+                                size: 14,
+                                color: hospital.phone.isNotEmpty 
+                                  ? Colors.blue[600]
+                                  : Colors.grey[500],
+                              ),
+                              SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  hospital.phone.isNotEmpty 
+                                    ? hospital.phone 
+                                    : 'Phone: Not Available',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: hospital.phone.isNotEmpty 
+                                      ? Colors.blue[600] 
+                                      : Colors.grey[500],
+                                    fontWeight: FontWeight.w500,
+                                    decoration: hospital.phone.isNotEmpty 
+                                      ? TextDecoration.underline 
+                                      : null,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                         SizedBox(height: 8),
                         
                         // Rating and Distance
@@ -135,37 +176,35 @@ class HospitalCard extends StatelessWidget {
                 ],
               ),
               
-              // Wait Time (if available)
+              // Wait Time (backend AI-enhanced when available, else local estimate)
               SizedBox(height: 15),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: _getWaitTimeColor().withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: _getWaitTimeColor(),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.access_time,
-                      size: 16,
-                      color: _getWaitTimeColor(),
+              Builder(
+                builder: (context) {
+                  final color = _getWaitTimeColor(_getWaitTimeMinutes(context));
+                  return Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: color, width: 1),
                     ),
-                    SizedBox(width: 6),
-                    Text(
-                      _getWaitTimeText(),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: _getWaitTimeColor(),
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.access_time, size: 16, color: color),
+                        SizedBox(width: 6),
+                        Text(
+                          _getWaitTimeText(context),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: color,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
               
               // Specialties
@@ -199,22 +238,37 @@ class HospitalCard extends StatelessWidget {
     );
   }
   
-  Color _getWaitTimeColor() {
-    // This would normally use real wait time data
-    // For now, using a mock wait time based on rating
-    if (hospital.rating > 4.0) return Colors.green;
-    if (hospital.rating > 3.0) return Colors.orange;
+  /// Wait time in minutes from backend (AI-enhanced) or provider (wait-times API), or null for mock.
+  int? _getWaitTimeMinutes(BuildContext context) {
+    if (hospital.estimatedWaitTimeMinutes != null) return hospital.estimatedWaitTimeMinutes;
+    final wt = Provider.of<HospitalProvider>(context, listen: false).getWaitTime(hospital.id);
+    if (wt != null && (wt.currentWaitTime > 0 || wt.averageWaitTime > 0)) {
+      return wt.currentWaitTime > 0 ? wt.currentWaitTime : wt.averageWaitTime;
+    }
+    return null;
+  }
+
+  Color _getWaitTimeColor(int? waitMinutes) {
+    final minutes = waitMinutes ?? _mockWaitTimeMinutes();
+    if (minutes <= 15) return Colors.green;
+    if (minutes <= 45) return Colors.orange;
     return Colors.red;
   }
-  
-  String _getWaitTimeText() {
-    // Mock wait time calculation based on rating and distance
-    double baseWaitTime = 30.0; // Base wait time in minutes
-    double ratingFactor = (5.0 - hospital.rating) * 10; // Higher rating = less wait
-    double distanceFactor = hospital.distance * 2; // Further hospitals might be less busy
-    
-    int mockWaitTime = (baseWaitTime + ratingFactor - distanceFactor).round().clamp(5, 120);
-    return 'Est. $mockWaitTime min wait';
+
+  int _mockWaitTimeMinutes() {
+    double baseWaitTime = 30.0;
+    double ratingFactor = (5.0 - hospital.rating) * 10;
+    double distanceFactor = hospital.distance * 2;
+    return (baseWaitTime + ratingFactor - distanceFactor).round().clamp(5, 120);
+  }
+
+  String _getWaitTimeText(BuildContext context) {
+    final backendMinutes = _getWaitTimeMinutes(context);
+    final minutes = backendMinutes ?? _mockWaitTimeMinutes();
+    if (backendMinutes != null) {
+      return 'Est. $minutes min wait'; // AI-enhanced from backend (reviews, traffic, etc.)
+    }
+    return 'Est. ~$minutes min (from rating)'; // Local estimate when backend has no data
   }
   
   void _showHospitalDetails(BuildContext context) {
@@ -226,123 +280,8 @@ class HospitalCard extends StatelessWidget {
     );
   }
   
-  void _showOldHospitalDetails(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        minChildSize: 0.3,
-        builder: (context, scrollController) => Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: ListView(
-            controller: scrollController,
-            padding: EdgeInsets.all(20),
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              SizedBox(height: 20),
-              
-              Text(
-                hospital.name,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(height: 10),
-              
-              Text(
-                hospital.address,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
-              ),
-              SizedBox(height: 20),
-              
-              // Contact Info
-              if (hospital.phone.isNotEmpty) ...[
-                ListTile(
-                  leading: Icon(Icons.phone, color: Colors.blue),
-                  title: Text(hospital.phone),
-                  subtitle: Text('Tap to call'),
-                  onTap: () {
-                    // Implement phone call
-                  },
-                ),
-              ],
-              
-              // Specialties
-              if (hospital.specialties.isNotEmpty) ...[
-                SizedBox(height: 20),
-                Text(
-                  'Specialties',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: hospital.specialties.map((specialty) => 
-                    Chip(
-                      label: Text(specialty),
-                      backgroundColor: Colors.blue[50],
-                    ),
-                  ).toList(),
-                ),
-              ],
-              
-              SizedBox(height: 30),
-              
-              // Action Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child:                   ElevatedButton.icon(
-                    onPressed: () => _openDirections(context, hospital),
-                    icon: Icon(Icons.directions),
-                    label: Text('Directions'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                  ),
-                  SizedBox(width: 15),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _callHospital(context, hospital),
-                      icon: Icon(Icons.phone),
-                      label: Text('Call'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
   
-  static void _openDirections(BuildContext context, Hospital hospital) async {
+  void _openDirections(BuildContext context, Hospital hospital) async {
     try {
       // Try Google Maps app first
       final String googleMapsAppUrl = 
@@ -383,7 +322,7 @@ class HospitalCard extends StatelessWidget {
     }
   }
   
-  static void _callHospital(BuildContext context, Hospital hospital) async {
+  void _callHospital(BuildContext context, Hospital hospital) async {
     // Clean the phone number
     String cleanPhone = hospital.phone.replaceAll(RegExp(r'[^\d+]'), '');
     if (!cleanPhone.startsWith('+') && cleanPhone.length == 10) {

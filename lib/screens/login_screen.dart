@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoggedIn;
@@ -108,6 +109,20 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ? const CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.white))
                                 : const Text('Sign In'),
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => RegisterScreen(
+                                  onRegistered: () => Navigator.pop(context),
+                                ),
+                              ),
+                            );
+                          },
+                          child: const Text('Don\'t have an account? Sign up'),
                         ),
                       ],
                     ),

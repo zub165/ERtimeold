@@ -1,9 +1,6 @@
-import 'package:flutter/services.dart';
 import '../config/app_config.dart';
 
 class DynamicApiKeyService {
-  static const MethodChannel _channel = MethodChannel('api_key_manager');
-  
   /// Update Android Manifest API key at runtime (if possible)
   static Future<bool> updateAndroidManifestApiKey(String apiKey) async {
     try {

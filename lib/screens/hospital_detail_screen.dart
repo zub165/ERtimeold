@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/django_api_service.dart';
-import '../config/app_config.dart';
+import '../config/units_config.dart';
 
 class HospitalDetailScreen extends StatefulWidget {
   final Hospital hospital;
@@ -151,7 +152,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
                 ),
                 Spacer(),
                 Text(
-                  '${widget.hospital.distance.toStringAsFixed(1)} km away',
+                  '${UnitsConfig.formatDistance(widget.hospital.distance)} away',
                   style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
               ],
@@ -391,7 +392,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
               )
             : Icon(Icons.send),
         label: Text(
-          _isSubmitting ? 'Submitting to AI Backend...' : 'Submit Review & Wait Time',
+          _isSubmitting ? 'Submitting...' : 'Submit Review & Wait Time',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         style: ElevatedButton.styleFrom(
@@ -525,8 +526,13 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
   }
   
   void _submitReview() async {
-    if (_userComment.trim().isEmpty) {
+    final comment = _userComment.trim();
+    if (comment.isEmpty) {
       _showErrorSnackBar('Please write a review comment');
+      return;
+    }
+    if (comment.length < 10) {
+      _showErrorSnackBar('Please write at least 10 characters so your review is helpful to others.');
       return;
     }
     
@@ -535,30 +541,34 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
     });
     
     try {
-      // Submit to Django AI-enhanced backend
-      bool success = await _apiService.submitEnhancedReview(
+      final result = await _apiService.submitEnhancedReview(
         hospitalId: widget.hospital.id,
         rating: _userRating,
         comment: _userComment.trim(),
         waitTimeMinutes: _waitTimeMinutes,
         userLocation: '${widget.hospital.latitude},${widget.hospital.longitude}',
+        hospitalDetails: widget.hospital, // Pass full hospital details for external API hospitals
       );
-      
-      if (success) {
-        _showSuccessDialog();
+
+      if (!mounted) return;
+      if (result.success) {
+        _showSuccessDialog(aiUpdated: result.aiUpdated);
       } else {
         _showErrorSnackBar('Failed to submit review. Please try again.');
       }
     } catch (e) {
-      _showErrorSnackBar('Error submitting review: $e');
+      if (!mounted) return;
+      _showErrorSnackBar('Error submitting review. Please check connection and try again.');
     } finally {
-      setState(() {
-        _isSubmitting = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
   
-  void _showSuccessDialog() {
+  void _showSuccessDialog({bool aiUpdated = false}) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -571,14 +581,38 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
             Text('Review Submitted!'),
           ],
         ),
-        content: Text(
-          'Thank you! Your review and wait time have been sent to our AI-enhanced system. This data will help improve hospital ratings and wait time predictions for other users.',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Thank you! Your review and wait time have been saved to the Django backend and sent to our AI-enhanced system. This data will help improve hospital ratings and wait time predictions for other users.',
+            ),
+            if (aiUpdated) ...[
+              SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome, color: Color(0xFF5DADE2), size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Your feedback is improving predictions for other users.',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF5DADE2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(context).pop(); // Close dialog
-              Navigator.of(context).pop(); // Go back to main screen
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
             },
             child: Text('OK', style: TextStyle(color: Color(0xFF5DADE2))),
           ),

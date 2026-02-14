@@ -105,6 +105,18 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future.delayed(Duration(seconds: 2));
     
     final auth = context.read<AuthProvider>();
+    
+    // If authenticated, validate token
+    if (auth.isAuthenticated) {
+      print('🔐 Found stored auth token, validating...');
+      bool tokenValid = await auth.validateStoredToken();
+      if (!tokenValid) {
+        print('❌ Stored token invalid, showing login screen');
+      } else {
+        print('✅ Token valid, proceeding to main screen');
+      }
+    }
+    
     // Navigate to login quickly if not authenticated, else to main screen
     if (!auth.isAuthenticated) {
       Navigator.pushReplacement(

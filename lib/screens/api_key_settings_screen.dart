@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_key_manager.dart';
-import '../services/django_api_service.dart';
 import '../config/app_config.dart';
 
 class ApiKeySettingsScreen extends StatefulWidget {
