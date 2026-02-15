@@ -1,9 +1,26 @@
+// lib/config/app_config.dart
+
 class AppConfig {
   // App Information
   static const String appName = 'ER Wait Time';
   static const String packageName = 'com.easytechnologiez.ERTime';
-  static const String version = '2.0.8';
-  static const int versionCode = 8;
+  static const String version = '2.0.9';
+  static const int versionCode = 9;
+  
+  // PLATFORM-SPECIFIC PRICING
+  // iOS: Paid app ($6.99) - NO ADS
+  // Android: Free with ads OR Premium IAP
+  static const bool isIOSPaidApp = true;  // iOS is $6.99 paid
+  static const bool isAndroidFreeApp = true;  // Android is free with ads
+  
+  // IN-APP PURCHASE IDs
+  // iOS: Additional premium features
+  static const String iosPremiumPlus = 'premium_plus_monthly_299';  // $2.99/month for advanced features
+  static const String iosPremiumPlusYearly = 'premium_plus_yearly_2999';  // $29.99/year
+  
+  // Android: Full premium (removes ads + features)
+  static const String androidPremiumMonthly = 'premium_monthly_499';  // $4.99/month
+  static const String androidPremiumYearly = 'premium_yearly_3999';  // $39.99/year
   
   // Map API Keys - Retrieved dynamically from Django backend or user input
   static String? googleMapsApiKey;
@@ -35,6 +52,20 @@ class AppConfig {
   
   // Contact Information
   static const String supportEmail = 'support@easytechnologiez.com';
+  
+  // FEATURE FLAGS
+  static bool shouldShowAds() {
+    // iOS paid app: NO ADS
+    // Android free app: SHOW ADS (unless premium)
+    if (isIOSPaidApp) return false;
+    return isAndroidFreeApp;
+  }
+  
+  static bool hasPremiumPlusFeatures() {
+    // Check if user has subscribed to Premium Plus
+    // Will be implemented in SubscriptionService
+    return false; // Default
+  }
   
   // Privacy Policy Text (from existing Android project)
   static const String privacyPolicyText = '''

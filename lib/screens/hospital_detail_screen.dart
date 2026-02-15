@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/django_api_service.dart';
 import '../config/units_config.dart';
+import '../services/ad_manager.dart';
 
 class HospitalDetailScreen extends StatefulWidget {
   final Hospital hospital;
@@ -22,6 +23,13 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
   bool _isSubmitting = false;
   
   final TextEditingController _commentController = TextEditingController();
+  
+  @override
+  void initState() {
+    super.initState();
+    // Track hospital view for ad display (Android only)
+    AdManager().incrementAction(actionName: 'viewed_hospital');
+  }
   
   @override
   void dispose() {
@@ -552,6 +560,8 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
 
       if (!mounted) return;
       if (result.success) {
+        // Track review submission for ad display (Android only)
+        AdManager().incrementAction(actionName: 'submitted_review');
         _showSuccessDialog(aiUpdated: result.aiUpdated);
       } else {
         _showErrorSnackBar('Failed to submit review. Please try again.');

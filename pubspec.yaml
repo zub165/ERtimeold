@@ -2,7 +2,7 @@ name: er_wait_time_flutter
 description: "ER Wait Time - Emergency Room Wait Time Tracker with AI-powered Django backend"
 publish_to: 'none'
 
-version: 2.0.8+8
+version: 2.0.9+9
 
 environment:
   sdk: ^3.8.1
@@ -55,8 +55,11 @@ dependencies:
   # JSON serialization
   json_annotation: ^4.8.1
   
-  # AdMob
+  # AdMob (Android only - iOS is paid app)
   google_mobile_ads: ^5.1.0
+  
+  # In-App Purchases
+  in_app_purchase: ^3.1.11
 
 dev_dependencies:
   flutter_test:

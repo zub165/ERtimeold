@@ -5,6 +5,7 @@ import '../providers/hospital_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/django_api_service.dart';
 import '../services/mock_data_service.dart';
+import '../services/ad_manager.dart';
 import '../widgets/hospital_card.dart';
 import '../widgets/banner_ad_widget.dart';
 import '../config/units_config.dart';
@@ -169,6 +170,9 @@ class _MainScreenState extends State<MainScreen> {
         if (!mounted) return;
         _currentPage = 1;
         _hasMore = hospitals.length >= _pageSize;
+        
+        // Track search action for ad display (Android only)
+        AdManager().incrementAction(actionName: 'searched_hospitals');
       } catch (e) {
         if (!mounted) return;
         hospitals = [];

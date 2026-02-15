@@ -5,12 +5,14 @@ import 'screens/splash_screen.dart';
 import 'providers/location_provider.dart';
 import 'providers/hospital_provider.dart';
 import 'providers/auth_provider.dart';
+import 'services/ad_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize AdMob
+  // Initialize AdMob and AdManager
   await MobileAds.instance.initialize();
+  await AdManager().initialize();
   
   runApp(MyApp());
 }

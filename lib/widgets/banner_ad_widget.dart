@@ -31,6 +31,14 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   @override
   void initState() {
     super.initState();
+    
+    // iOS is PAID app ($6.99) - NO ADS!
+    // Only load ads for Android (free app)
+    if (Platform.isIOS) {
+      debugPrint('📱 iOS paid app - banner ads disabled');
+      return;
+    }
+    
     _loadAd();
   }
 
@@ -135,6 +143,18 @@ class _BannerAdWithPlaceholderState extends State<BannerAdWithPlaceholder> {
   @override
   void initState() {
     super.initState();
+    
+    // iOS is PAID app ($6.99) - NO ADS!
+    // Only load ads for Android (free app)
+    if (Platform.isIOS) {
+      debugPrint('📱 iOS paid app - banner ads disabled');
+      setState(() {
+        _isLoading = false;
+        _isLoaded = false;
+      });
+      return;
+    }
+    
     _loadAd();
   }
 
