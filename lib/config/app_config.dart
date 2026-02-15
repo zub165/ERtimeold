@@ -5,7 +5,7 @@ class AppConfig {
   static const String appName = 'ER Wait Time';
   static const String packageName = 'com.easytechnologiez.ERTime';
   static const String version = '2.0.9';
-  static const int versionCode = 9;
+  static const int versionCode = 37;
   
   // PLATFORM-SPECIFIC PRICING
   // iOS: Paid app ($6.99) - NO ADS
