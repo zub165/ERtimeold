@@ -2,7 +2,7 @@ name: er_wait_time_flutter
 description: "ER Wait Time - Emergency Room Wait Time Tracker with AI-powered Django backend"
 publish_to: 'none'
 
-version: 2.1.27+37
+version: 2.1.27+38
 
 environment:
   sdk: ^3.8.1
