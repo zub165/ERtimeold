@@ -264,6 +264,14 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                   );
                   break;
+                case 'debug':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DebugScreen(),
+                    ),
+                  );
+                  break;
                 case 'logout':
                   await context.read<AuthProvider>().logout();
                   if (!context.mounted) return;
@@ -350,6 +358,16 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ),
               PopupMenuItem(
+                value: 'debug',
+                child: Row(
+                  children: [
+                    Icon(Icons.bug_report, color: Color(0xFF5DADE2)),
+                    SizedBox(width: 8),
+                    Text('Debug Screen'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
                 value: 'delete_account',
                 child: Row(
                   children: [
@@ -370,18 +388,6 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ),
             ],
-          ),
-          IconButton(
-            icon: Icon(Icons.bug_report),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => DebugScreen(),
-                ),
-              );
-            },
-            tooltip: 'Debug Django',
           ),
           Consumer<HospitalProvider>(
             builder: (context, hospitalProvider, child) {
