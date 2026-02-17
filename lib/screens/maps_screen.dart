@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../providers/location_provider.dart';
 import '../providers/hospital_provider.dart';
 import '../services/django_api_service.dart';
+import '../services/api_key_manager.dart';
 import '../config/app_config.dart';
 import '../config/units_config.dart';
 
@@ -25,19 +26,46 @@ class _MapsScreenState extends State<MapsScreen> {
   List<Marker> _openStreetMarkers = [];
   List<Marker> _tomTomMarkers = [];
   MapProvider _currentProvider = MapProvider.openStreetMap;
+  String? _activeGoogleKey;
+  String? _activeTomTomKey;
+  bool _keysLoaded = false;
   
   @override
   void initState() {
     super.initState();
+    _refreshApiKeys();
+  }
+  
+  Future<void> _refreshApiKeys() async {
+    // Refresh active API keys from ApiKeyManager
+    final googleKey = await ApiKeyManager.getActiveGoogleMapsApiKey();
+    final tomTomKey = await ApiKeyManager.getActiveTomTomApiKey();
+    
+    // Update AppConfig to reflect active keys
+    if (googleKey != null) {
+      AppConfig.googleMapsApiKey = googleKey;
+    }
+    if (tomTomKey != null) {
+      AppConfig.tomtomApiKey = tomTomKey;
+    }
+    
+    if (!mounted) return;
+    
+    setState(() {
+      _activeGoogleKey = googleKey;
+      _activeTomTomKey = tomTomKey;
+      _keysLoaded = true;
+    });
+    
     _selectMapProvider();
     _loadHospitalMarkers();
   }
   
   void _selectMapProvider() {
     // Priority: TomTom > Google > OpenStreetMap (default)
-    if (AppConfig.tomtomApiKey != null && AppConfig.tomtomApiKey!.isNotEmpty) {
+    if (_activeTomTomKey != null && _activeTomTomKey!.isNotEmpty) {
       _currentProvider = MapProvider.tomTomMaps;
-    } else if (AppConfig.googleMapsApiKey != null && AppConfig.googleMapsApiKey!.isNotEmpty) {
+    } else if (_activeGoogleKey != null && _activeGoogleKey!.isNotEmpty) {
       _currentProvider = MapProvider.googleMaps;
     } else {
       _currentProvider = MapProvider.openStreetMap;
@@ -51,7 +79,6 @@ class _MapsScreenState extends State<MapsScreen> {
       case MapProvider.tomTomMaps:
         return 'Hospital Map (TomTom)';
       case MapProvider.openStreetMap:
-      default:
         return 'Hospital Map (OpenStreetMap)';
     }
   }
@@ -67,8 +94,8 @@ class _MapsScreenState extends State<MapsScreen> {
         _loadTomTomMarkers(hospitalProvider);
         break;
       case MapProvider.openStreetMap:
-      default:
         _loadOpenStreetMarkers(hospitalProvider);
+        break;
     }
   }
   
@@ -304,25 +331,39 @@ class _MapsScreenState extends State<MapsScreen> {
               ),
               PopupMenuItem(
                 value: MapProvider.googleMaps,
-                enabled: AppConfig.googleMapsApiKey != null && 
-                        AppConfig.googleMapsApiKey!.isNotEmpty,
+                enabled: _keysLoaded && _activeGoogleKey != null && _activeGoogleKey!.isNotEmpty,
                 child: Row(
                   children: [
                     Icon(Icons.map, color: Colors.blue),
                     SizedBox(width: 8),
                     Text('Google Maps'),
+                    if (_activeGoogleKey == null || _activeGoogleKey!.isEmpty)
+                      Padding(
+                        padding: EdgeInsets.only(left: 8),
+                        child: Text(
+                          '(No API Key)',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ),
                   ],
                 ),
               ),
               PopupMenuItem(
                 value: MapProvider.tomTomMaps,
-                enabled: AppConfig.tomtomApiKey != null && 
-                        AppConfig.tomtomApiKey!.isNotEmpty,
+                enabled: _keysLoaded && _activeTomTomKey != null && _activeTomTomKey!.isNotEmpty,
                 child: Row(
                   children: [
                     Icon(Icons.navigation, color: Color(0xFFD7282C)),
                     SizedBox(width: 8),
                     Text('TomTom Maps'),
+                    if (_activeTomTomKey == null || _activeTomTomKey!.isEmpty)
+                      Padding(
+                        padding: EdgeInsets.only(left: 8),
+                        child: Text(
+                          '(No API Key)',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -357,7 +398,10 @@ class _MapsScreenState extends State<MapsScreen> {
           ),
           IconButton(
             icon: Icon(Icons.refresh),
-            onPressed: _loadHospitalMarkers,
+            onPressed: () {
+              _refreshApiKeys();
+            },
+            tooltip: 'Refresh Map & API Keys',
           ),
         ],
       ),
@@ -403,7 +447,6 @@ class _MapsScreenState extends State<MapsScreen> {
             case MapProvider.tomTomMaps:
               return _buildTomTomMap(locationProvider);
             case MapProvider.openStreetMap:
-            default:
               return _buildOpenStreetMap(locationProvider);
           }
         },
@@ -420,6 +463,27 @@ class _MapsScreenState extends State<MapsScreen> {
   }
   
   Widget _buildGoogleMap(LocationProvider locationProvider) {
+    if (_activeGoogleKey == null || _activeGoogleKey!.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.red),
+            SizedBox(height: 20),
+            Text(
+              'Google Maps API Key Required',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'Please add your Google Maps API key in Settings',
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      );
+    }
+    
     return google_maps.GoogleMap(
       onMapCreated: (google_maps.GoogleMapController controller) {
         _googleMapController = controller;
@@ -440,7 +504,28 @@ class _MapsScreenState extends State<MapsScreen> {
   }
   
   Widget _buildTomTomMap(LocationProvider locationProvider) {
-    final tomTomApiKey = AppConfig.tomtomApiKey ?? '';
+    final tomTomApiKey = _activeTomTomKey ?? '';
+    
+    if (tomTomApiKey.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.red),
+            SizedBox(height: 20),
+            Text(
+              'TomTom API Key Required',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'Please add your TomTom API key in Settings',
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      );
+    }
     
     return FlutterMap(
       mapController: _tomTomMapController,
