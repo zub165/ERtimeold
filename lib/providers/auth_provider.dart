@@ -39,7 +39,7 @@ class AuthProvider extends ChangeNotifier {
     
     // Try a simple backend call to validate token (hospital search doesn't require auth)
     try {
-      final hospitals = await _apiService.searchHospitals(
+      await _apiService.searchHospitals(
         latitude: 37.7749,
         longitude: -122.4194,
         radius: 5.0,
@@ -103,9 +103,11 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Request account deletion on backend then clear local auth. Always clears local data.
-  Future<void> deleteAccount() async {
-    await _apiService.deleteAccount();
+  /// Returns true if backend accepted deletion, false otherwise (local data is still cleared).
+  Future<bool> deleteAccount() async {
+    final ok = await _apiService.deleteAccount();
     await logout();
+    return ok;
   }
 }
 

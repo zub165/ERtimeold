@@ -80,7 +80,7 @@ class _MapsScreenState extends State<MapsScreen> {
           position: google_maps.LatLng(hospital.latitude, hospital.longitude),
           infoWindow: google_maps.InfoWindow(
             title: hospital.name,
-            snippet: '${UnitsConfig.formatDistance(hospital.distance)} away • ${hospital.rating.toStringAsFixed(1)}⭐',
+            snippet: '${UnitsConfig.formatDistanceOrNull(hospital.distance)} away • ${hospital.rating != null ? hospital.rating!.toStringAsFixed(1) : "—"}⭐',
           ),
           icon: google_maps.BitmapDescriptor.defaultMarkerWithHue(
               google_maps.BitmapDescriptor.hueRed),
@@ -235,9 +235,9 @@ class _MapsScreenState extends State<MapsScreen> {
               children: [
                 Icon(Icons.star, color: Colors.amber, size: 20),
                 SizedBox(width: 5),
-                Text('Rating: ${hospital.rating.toStringAsFixed(1)}'),
+                Text('Rating: ${hospital.rating != null ? hospital.rating!.toStringAsFixed(1) : "—"}'),
                 Spacer(),
-                Text('${UnitsConfig.formatDistance(hospital.distance)} away'),
+                Text('${UnitsConfig.formatDistanceOrNull(hospital.distance)} away'),
               ],
             ),
             SizedBox(height: 20),

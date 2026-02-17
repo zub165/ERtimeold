@@ -91,7 +91,7 @@ class MockDataService {
     }
     
     // Sort by distance
-    mockHospitals.sort((a, b) => a.distance.compareTo(b.distance));
+    mockHospitals.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
     
     return mockHospitals;
   }

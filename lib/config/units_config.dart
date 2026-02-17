@@ -17,6 +17,12 @@ class UnitsConfig {
       return '${distanceInKm.toStringAsFixed(1)} km';
     }
   }
+
+  /// Format distance or show "—" when null (backend sent no distance).
+  static String formatDistanceOrNull(double? distanceInKm) {
+    if (distanceInKm == null) return '—';
+    return formatDistance(distanceInKm);
+  }
   
   static String getDistanceUnitString() {
     return _distanceUnit == DistanceUnit.miles ? 'miles' : 'km';

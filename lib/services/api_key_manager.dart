@@ -78,12 +78,14 @@ class ApiKeyManager {
     // Apply user API keys if available
     if (userGoogleKey != null && userGoogleKey.isNotEmpty) {
       AppConfig.googleMapsApiKey = userGoogleKey;
-      print('Loaded user Google Maps API key: ${userGoogleKey.substring(0, 10)}...');
+      final preview = userGoogleKey.length > 10 ? userGoogleKey.substring(0, 10) : userGoogleKey;
+      print('Loaded user Google Maps API key: $preview...');
     }
     
     if (userTomTomKey != null && userTomTomKey.isNotEmpty) {
       AppConfig.tomtomApiKey = userTomTomKey;
-      print('Loaded user TomTom API key: ${userTomTomKey.substring(0, 10)}...');
+      final preview = userTomTomKey.length > 10 ? userTomTomKey.substring(0, 10) : userTomTomKey;
+      print('Loaded user TomTom API key: $preview...');
     }
     
     // Set preferred map provider

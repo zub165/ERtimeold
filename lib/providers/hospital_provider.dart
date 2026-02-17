@@ -54,13 +54,13 @@ class HospitalProvider with ChangeNotifier {
   
   // Sort hospitals by distance
   void sortByDistance() {
-    _hospitals.sort((a, b) => a.distance.compareTo(b.distance));
+    _hospitals.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
     notifyListeners();
   }
   
   // Sort hospitals by rating
   void sortByRating() {
-    _hospitals.sort((a, b) => b.rating.compareTo(a.rating));
+    _hospitals.sort((a, b) => b.ratingOrZero.compareTo(a.ratingOrZero));
     notifyListeners();
   }
   

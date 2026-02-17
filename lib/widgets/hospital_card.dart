@@ -134,26 +134,35 @@ class HospitalCard extends StatelessWidget {
                         ),
                         SizedBox(height: 8),
                         
-                        // Rating and Distance
+                        // Rating and Distance (show "—" when backend sent null)
                         Row(
                           children: [
-                            RatingBarIndicator(
-                              rating: hospital.rating,
-                              itemBuilder: (context, index) => Icon(
-                                Icons.star,
-                                color: Colors.amber,
+                            if (hospital.rating != null) ...[
+                              RatingBarIndicator(
+                                rating: (hospital.rating! / 2).clamp(0.0, 5.0),
+                                itemBuilder: (context, index) => Icon(
+                                  Icons.star,
+                                  color: Colors.amber,
+                                ),
+                                itemCount: 5,
+                                itemSize: 16.0,
                               ),
-                              itemCount: 5,
-                              itemSize: 16.0,
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              hospital.rating.toStringAsFixed(1),
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
+                              SizedBox(width: 8),
+                              Text(
+                                hospital.rating!.toStringAsFixed(1),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
+                            ] else
+                              Text(
+                                '—',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
                             Spacer(),
                             Icon(
                               Icons.location_on,
@@ -162,7 +171,7 @@ class HospitalCard extends StatelessWidget {
                             ),
                             SizedBox(width: 4),
                             Text(
-                              UnitsConfig.formatDistance(hospital.distance),
+                              UnitsConfig.formatDistanceOrNull(hospital.distance),
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey[600],
@@ -176,11 +185,12 @@ class HospitalCard extends StatelessWidget {
                 ],
               ),
               
-              // Wait Time (backend AI-enhanced when available, else local estimate)
+              // Wait Time (backend when available; "—" when null per contract)
               SizedBox(height: 15),
               Builder(
                 builder: (context) {
-                  final color = _getWaitTimeColor(_getWaitTimeMinutes(context));
+                  final minutes = _getWaitTimeMinutes(context);
+                  final color = minutes != null ? _getWaitTimeColor(minutes) : Colors.grey;
                   return Container(
                     padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
@@ -257,18 +267,17 @@ class HospitalCard extends StatelessWidget {
 
   int _mockWaitTimeMinutes() {
     double baseWaitTime = 30.0;
-    double ratingFactor = (5.0 - hospital.rating) * 10;
-    double distanceFactor = hospital.distance * 2;
+    double ratingFactor = (5.0 - hospital.ratingOrZero) * 10;
+    double distanceFactor = (hospital.distance ?? 0) * 2;
     return (baseWaitTime + ratingFactor - distanceFactor).round().clamp(5, 120);
   }
 
   String _getWaitTimeText(BuildContext context) {
     final backendMinutes = _getWaitTimeMinutes(context);
-    final minutes = backendMinutes ?? _mockWaitTimeMinutes();
     if (backendMinutes != null) {
-      return 'Est. $minutes min wait'; // AI-enhanced from backend (reviews, traffic, etc.)
+      return 'Est. $backendMinutes min wait';
     }
-    return 'Est. ~$minutes min (from rating)'; // Local estimate when backend has no data
+    return '—'; // Backend sent no wait time; show "—" per contract
   }
   
   void _showHospitalDetails(BuildContext context) {
@@ -281,6 +290,7 @@ class HospitalCard extends StatelessWidget {
   }
   
   
+  // ignore: unused_element - kept for future "Get directions" action
   void _openDirections(BuildContext context, Hospital hospital) async {
     try {
       // Try Google Maps app first

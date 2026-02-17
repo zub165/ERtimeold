@@ -315,7 +315,19 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                   );
                   if (confirmed == true && context.mounted) {
-                    await context.read<AuthProvider>().deleteAccount();
+                    final deletedOnBackend = await context.read<AuthProvider>().deleteAccount();
+                    if (!context.mounted) return;
+                    if (!deletedOnBackend && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Account removed from this device. Server could not delete account—contact support@easytechnologiez.com to remove your data.',
+                          ),
+                          duration: Duration(seconds: 6),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
                     if (!context.mounted) return;
                     Navigator.pushReplacement(
                       context,

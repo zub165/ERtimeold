@@ -96,15 +96,21 @@ class DjangoApiService {
           allHospitals.addAll(hospitals);
         }
       } else {
-        // Try list endpoint
-        final listUri = Uri.parse('$baseUrl/hospitals/');
+        // Try list endpoint with lat/lon so backend can compute distance
+        final listParams = <String, String>{
+          'lat': latitude.toString(),
+          'lon': longitude.toString(),
+          'page': page.toString(),
+          'page_size': pageSize.toString(),
+        };
+        final listUri = Uri.parse('$baseUrl/hospitals/').replace(queryParameters: listParams);
         final listResponse = await http.get(listUri, headers: headers).timeout(Duration(seconds: 15));
         if (listResponse.statusCode == 200) {
           final listData = json.decode(listResponse.body) as Map<String, dynamic>;
           if (listData['status'] == 'success' && listData['data'] != null) {
             final list = listData['data'] as List<dynamic>;
             final hospitals = _parseHospitalList(list, latitude, longitude);
-            List<Hospital> nearby = hospitals.where((h) => h.distance <= radius).toList();
+            List<Hospital> nearby = hospitals.where((h) => (h.distance ?? double.infinity) <= radius).toList();
             print('Django list: found ${nearby.length} hospitals within radius');
             allHospitals.addAll(nearby);
           }
@@ -116,7 +122,7 @@ class DjangoApiService {
 
     // For page > 1, only Django supports pagination; return Django results only
     if (page > 1) {
-      allHospitals.sort((a, b) => a.distance.compareTo(b.distance));
+      allHospitals.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
       return allHospitals;
     }
 
@@ -144,7 +150,7 @@ class DjangoApiService {
     // Deduplicate (same location or very similar name)
     final deduplicated = _deduplicateHospitals(allHospitals);
     print('Total after merge & dedup: ${deduplicated.length} hospitals');
-    deduplicated.sort((a, b) => a.distance.compareTo(b.distance));
+      deduplicated.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
     return deduplicated;
   }
 
@@ -196,7 +202,7 @@ class DjangoApiService {
           estimatedWaitTimeMinutes: null,
         ));
       }
-      hospitals.sort((a, b) => a.distance.compareTo(b.distance));
+      hospitals.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
       return hospitals;
     } catch (e) {
       print('OpenStreetMap hospital search error: $e');
@@ -246,7 +252,7 @@ class DjangoApiService {
           estimatedWaitTimeMinutes: null,
         ));
       }
-      hospitals.sort((a, b) => a.distance.compareTo(b.distance));
+      hospitals.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
       return hospitals;
     } catch (e) {
       print('TomTom hospital search error: $e');
@@ -296,7 +302,7 @@ class DjangoApiService {
           estimatedWaitTimeMinutes: null,
         ));
       }
-      hospitals.sort((a, b) => a.distance.compareTo(b.distance));
+      hospitals.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
       return hospitals;
     } catch (e) {
       print('Google Places hospital search error: $e');
@@ -313,13 +319,25 @@ class DjangoApiService {
       try {
         final lat = _safeParseDouble(hospitalJson['latitude']) ?? 0.0;
         final lng = _safeParseDouble(hospitalJson['longitude']) ?? 0.0;
-        final rating = _safeParseDouble(hospitalJson['ai_rating']) ?? 4.0;
-        final distance = _calculateDistance(userLat, userLng, lat, lng);
-        
-        // Debug: Log rating to verify backend data
-        print('🏥 Hospital: ${hospitalJson['name']}, Rating: $rating (from backend ai_rating: ${hospitalJson['ai_rating']})');
-        
-        final wait = hospitalJson['smart_wait_time'] ?? hospitalJson['current_wait_time'] ??
+        // Backend contract: prefer distance_km, distance_miles, distance_m, distance (miles)
+        double? distanceKm = _safeParseDouble(hospitalJson['distance_km']);
+        final miles = _safeParseDouble(hospitalJson['distance_miles']);
+        distanceKm ??= miles != null ? miles * 1.60934 : null;
+        final metres = _safeParseDouble(hospitalJson['distance_m']);
+        distanceKm ??= metres != null ? metres / 1000 : null;
+        final distMiles = _safeParseDouble(hospitalJson['distance']);
+        if (distanceKm == null && distMiles != null) distanceKm = distMiles * 1.60934;
+        if (distanceKm == null && lat != 0 && lng != 0) {
+          distanceKm = _calculateDistance(userLat, userLng, lat, lng);
+        }
+        // Rating: ai_rating, rating, ai_rating_5 (×2), overall_performance_score
+        double? rating = _safeParseDouble(hospitalJson['ai_rating']) ?? _safeParseDouble(hospitalJson['rating']);
+        final r5 = _safeParseDouble(hospitalJson['ai_rating_5']);
+        rating ??= r5 != null ? r5 * 2.0 : null;
+        rating ??= _safeParseDouble(hospitalJson['overall_performance_score']);
+        // Wait: wait_time_prediction, wait_time_minutes, then fallbacks
+        final wait = hospitalJson['wait_time_prediction'] ?? hospitalJson['wait_time_minutes'] ??
+            hospitalJson['smart_wait_time'] ?? hospitalJson['current_wait_time'] ??
             hospitalJson['estimated_wait_time'] ?? hospitalJson['ai_estimated_wait'] ?? hospitalJson['predicted_wait_time'];
         int? waitMinutes;
         if (wait != null) {
@@ -335,7 +353,7 @@ class DjangoApiService {
           state: hospitalJson['state'] ?? '',
           latitude: lat,
           longitude: lng,
-          distance: distance,
+          distance: distanceKm,
           rating: rating,
           phone: hospitalJson['phone'] ?? '',
           website: hospitalJson['website'] ?? '',
@@ -694,16 +712,34 @@ class DjangoApiService {
     }
   }
 
-  /// Request account deletion on backend (DELETE /api/auth/delete-account/).
-  /// Returns true if backend accepted, false otherwise. Caller should clear local data either way.
+  /// Request account deletion on backend (DELETE or POST /api/auth/delete-account/).
+  /// Sends Authorization: Token <token>. Returns true if backend accepted, false otherwise.
+  /// Caller should clear local data either way.
   Future<bool> deleteAccount() async {
+    final uri = Uri.parse('$baseUrl/auth/delete-account/');
+    if (authToken == null || authToken!.isEmpty) {
+      print('Delete account: no auth token set');
+      return false;
+    }
     try {
-      final uri = Uri.parse('$baseUrl/auth/delete-account/');
-      final response = await http.delete(
+      // Try DELETE first (standard for account deletion)
+      var response = await http.delete(
         uri,
         headers: headers,
-      ).timeout(Duration(seconds: 10));
-      return response.statusCode == 200 || response.statusCode == 204;
+      ).timeout(const Duration(seconds: 15));
+      // Some backends use POST for delete-account; try if DELETE not allowed
+      if (response.statusCode == 404 || response.statusCode == 405) {
+        response = await http.post(
+          uri,
+          headers: headers,
+          body: json.encode({'confirm': true}),
+        ).timeout(const Duration(seconds: 15));
+      }
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return true;
+      }
+      print('Delete account failed: ${response.statusCode} ${response.body}');
+      return false;
     } catch (e) {
       print('Delete account request error: $e');
       return false;
@@ -752,6 +788,39 @@ class DjangoApiService {
       return 'Network error. Please try again.';
     }
   }
+
+  /// Request password reset email from Django backend (POST /api/auth/password-reset/).
+  /// Returns null on success, or an error message on failure.
+  Future<String?> requestPasswordReset(String email) async {
+    try {
+      final uri = Uri.parse('$baseUrl/auth/password-reset/');
+      final response = await http.post(
+        uri,
+        headers: headers,
+        body: json.encode({'email': email.trim()}),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = json.decode(response.body);
+        final msg = data['message'] ?? data['detail'] ?? data['status'];
+        if (msg != null && (msg.toString().toLowerCase().contains('success') ||
+            msg.toString().toLowerCase().contains('sent') ||
+            msg.toString().toLowerCase().contains('email'))) {
+          return null;
+        }
+        return null; // treat as success if 200
+      }
+      try {
+        final data = json.decode(response.body);
+        return data['message'] ?? data['detail'] ?? data['error'] ?? 'Request failed';
+      } catch (_) {
+        return response.body.isNotEmpty ? response.body : 'Request failed (${response.statusCode})';
+      }
+    } catch (e) {
+      print('Password reset request error: $e');
+      return 'Network error. Please try again.';
+    }
+  }
 }
 
 /// Result of submitting a review; aiUpdated is true when backend used feedback for AI predictions.
@@ -770,13 +839,15 @@ class Hospital {
   final String state;
   final double latitude;
   final double longitude;
-  final double distance;
-  final double rating;
+  /// Distance in km from backend (distance_km, distance_miles, etc.) or null → show "—"
+  final double? distance;
+  /// Rating 1–10 from backend (ai_rating, rating, ai_rating_5, etc.) or null → show "—"
+  final double? rating;
   final String phone;
   final String website;
   final List<String> specialties;
   final String imageUrl;
-  /// AI-enhanced estimate from backend (reviews, traffic, weather, etc.) when available.
+  /// Wait time in minutes from backend (wait_time_prediction, wait_time_minutes, etc.) or null → show "—"
   final int? estimatedWaitTimeMinutes;
 
   Hospital({
@@ -787,8 +858,8 @@ class Hospital {
     this.state = '',
     required this.latitude,
     required this.longitude,
-    required this.distance,
-    required this.rating,
+    this.distance,
+    this.rating,
     required this.phone,
     this.website = '',
     required this.specialties,
@@ -796,8 +867,14 @@ class Hospital {
     this.estimatedWaitTimeMinutes,
   });
 
+  /// For sorting: null distance sorts last.
+  double get distanceOrInfinity => distance ?? double.infinity;
+  /// For sorting/display: null rating treated as 0 for legacy comparators.
+  double get ratingOrZero => rating ?? 0.0;
+
   factory Hospital.fromJson(Map<String, dynamic> json) {
-    final wait = json['smart_wait_time'] ?? json['current_wait_time'] ??
+    final wait = json['wait_time_prediction'] ?? json['wait_time_minutes'] ??
+        json['smart_wait_time'] ?? json['current_wait_time'] ??
         json['estimated_wait_time'] ?? json['ai_estimated_wait'] ?? json['predicted_wait_time'];
     int? waitMinutes;
     if (wait != null) {
@@ -805,6 +882,17 @@ class Hospital {
       if (wait is double) waitMinutes = wait.round();
       if (wait is String) waitMinutes = int.tryParse(wait);
     }
+    double? dist = _parseDouble(json['distance_km']);
+    final dm = _parseDouble(json['distance_miles']);
+    dist ??= dm != null ? dm * 1.60934 : null;
+    final dMetres = _parseDouble(json['distance_m']);
+    dist ??= dMetres != null ? dMetres / 1000 : null;
+    final dMiles = _parseDouble(json['distance']);
+    if (dist == null && dMiles != null) dist = dMiles * 1.60934;
+    double? rat = _parseDouble(json['ai_rating']) ?? _parseDouble(json['rating']);
+    final r5 = _parseDouble(json['ai_rating_5']);
+    rat ??= r5 != null ? r5 * 2.0 : null;
+    rat ??= _parseDouble(json['overall_performance_score']);
     return Hospital(
       id: json['id']?.toString() ?? '',
       name: json['name'] ?? 'Unknown Hospital',
@@ -813,8 +901,8 @@ class Hospital {
       state: json['state'] ?? '',
       latitude: _parseDouble(json['latitude']) ?? 0.0,
       longitude: _parseDouble(json['longitude']) ?? 0.0,
-      distance: _parseDouble(json['distance']) ?? 0.0,
-      rating: _parseDouble(json['ai_rating']) ?? 4.0,
+      distance: dist,
+      rating: rat,
       phone: json['phone'] ?? '',
       website: json['website'] ?? '',
       specialties: List<String>.from(json['specialties'] ?? []),

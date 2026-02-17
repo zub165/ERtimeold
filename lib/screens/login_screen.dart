@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import 'register_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoggedIn;
@@ -110,7 +111,22 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : const Text('Sign In'),
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const ForgotPasswordScreen(),
+                                ),
+                              );
+                            },
+                            child: const Text('Forgot password?'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         TextButton(
                           onPressed: () {
                             Navigator.push(

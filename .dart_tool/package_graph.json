@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "er_wait_time_flutter",
-      "version": "2.1.27+38",
+      "version": "2.2.0+40",
       "dependencies": [
         "cached_network_image",
         "cupertino_icons",

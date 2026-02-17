@@ -90,8 +90,8 @@ class _SplashScreenState extends State<SplashScreen> {
     }
     
     print('Final API key configuration:');
-    print('- Google Maps: ${AppConfig.googleMapsApiKey?.substring(0, 10)}...');
-    print('- TomTom: ${AppConfig.tomtomApiKey?.substring(0, 10)}...');
+    print('- Google Maps: ${AppConfig.googleMapsApiKey != null && AppConfig.googleMapsApiKey!.length > 10 ? AppConfig.googleMapsApiKey!.substring(0, 10) : "null"}...');
+    print('- TomTom: ${AppConfig.tomtomApiKey != null && AppConfig.tomtomApiKey!.length > 10 ? AppConfig.tomtomApiKey!.substring(0, 10) : "null"}...');
     print('- Preferred: ${AppConfig.useGoogleMaps ? "Google" : "TomTom"}');
     
     setState(() {

@@ -67,8 +67,8 @@ class _MapSettingsScreenState extends State<MapSettingsScreen> {
                   ),
                 ),
                 subtitle: Text(
-                  AppConfig.googleMapsApiKey != null 
-                    ? 'API Key: ${AppConfig.googleMapsApiKey!.substring(0, 10)}...'
+                  AppConfig.googleMapsApiKey != null && AppConfig.googleMapsApiKey!.isNotEmpty
+                    ? 'API Key: ${AppConfig.googleMapsApiKey!.length > 10 ? AppConfig.googleMapsApiKey!.substring(0, 10) : AppConfig.googleMapsApiKey}...'
                     : 'No API key available',
                   style: TextStyle(fontSize: 12),
                 ),
@@ -110,8 +110,8 @@ class _MapSettingsScreenState extends State<MapSettingsScreen> {
                   ),
                 ),
                 subtitle: Text(
-                  AppConfig.tomtomApiKey != null 
-                    ? 'API Key: ${AppConfig.tomtomApiKey!.substring(0, 10)}...'
+                  AppConfig.tomtomApiKey != null && AppConfig.tomtomApiKey!.isNotEmpty
+                    ? 'API Key: ${AppConfig.tomtomApiKey!.length > 10 ? AppConfig.tomtomApiKey!.substring(0, 10) : AppConfig.tomtomApiKey}...'
                     : 'API key will be provided by Django backend',
                   style: TextStyle(fontSize: 12),
                 ),

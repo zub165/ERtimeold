@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/django_api_service.dart';
 import '../config/units_config.dart';
@@ -155,12 +154,12 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
                 Icon(Icons.star, color: Colors.amber),
                 SizedBox(width: 8),
                 Text(
-                  'Rating: ${widget.hospital.rating.toStringAsFixed(1)}/5.0',
+                  'Rating: ${widget.hospital.rating != null ? (widget.hospital.rating! / 2).toStringAsFixed(1) : "—"}/5',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                 ),
                 Spacer(),
                 Text(
-                  '${UnitsConfig.formatDistance(widget.hospital.distance)} away',
+                  '${UnitsConfig.formatDistanceOrNull(widget.hospital.distance)} away',
                   style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
               ],
