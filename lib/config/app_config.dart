@@ -1,26 +1,9 @@
-// lib/config/app_config.dart
-
 class AppConfig {
   // App Information
   static const String appName = 'ER Wait Time';
   static const String packageName = 'com.easytechnologiez.ERTime';
-  static const String version = '2.2.1';
-  static const int versionCode = 41;
-  
-  // PLATFORM-SPECIFIC PRICING
-  // iOS: Paid app ($6.99) - NO ADS
-  // Android: Free with ads OR Premium IAP
-  static const bool isIOSPaidApp = true;  // iOS is $6.99 paid
-  static const bool isAndroidFreeApp = true;  // Android is free with ads
-  
-  // IN-APP PURCHASE IDs
-  // iOS: Additional premium features
-  static const String iosPremiumPlus = 'premium_plus_monthly_299';  // $2.99/month for advanced features
-  static const String iosPremiumPlusYearly = 'premium_plus_yearly_2999';  // $29.99/year
-  
-  // Android: Full premium (removes ads + features)
-  static const String androidPremiumMonthly = 'premium_monthly_499';  // $4.99/month
-  static const String androidPremiumYearly = 'premium_yearly_3999';  // $39.99/year
+  static const String version = '5.0.5';
+  static const int versionCode = 54;
   
   // Map API Keys - Retrieved dynamically from Django backend or user input
   static String? googleMapsApiKey;
@@ -33,13 +16,14 @@ class AppConfig {
   // 3. Demo/fallback mode (limited functionality)
   
   // Map Provider Settings
-  static bool useGoogleMaps = true;
+  // IMPORTANT: Google Maps is disabled by default to prevent crashes if API key is missing
+  // It will be enabled only if a valid API key is provided
+  static bool useGoogleMaps = false; // Changed to false - will be enabled if key is available
   static bool useTomTomMaps = false;
+  static bool useOpenStreetMap = true; // Enable OSM as default fallback
   
   // Django Backend Configuration (Primary Database)
-  // Production behind Nginx (HTTPS)
   static const String djangoBaseUrl = 'https://api.mywaitime.com/api';
-  static const String djangoPassword = 'Bismilah165\$';
   
   // Database Configuration - Using Django PostgreSQL/MySQL Backend
   static const bool useDjangoDatabase = true;
@@ -52,20 +36,6 @@ class AppConfig {
   
   // Contact Information
   static const String supportEmail = 'support@easytechnologiez.com';
-  
-  // FEATURE FLAGS
-  static bool shouldShowAds() {
-    // iOS paid app: NO ADS
-    // Android free app: SHOW ADS (unless premium)
-    if (isIOSPaidApp) return false;
-    return isAndroidFreeApp;
-  }
-  
-  static bool hasPremiumPlusFeatures() {
-    // Check if user has subscribed to Premium Plus
-    // Will be implemented in SubscriptionService
-    return false; // Default
-  }
   
   // Privacy Policy Text (from existing Android project)
   static const String privacyPolicyText = '''
