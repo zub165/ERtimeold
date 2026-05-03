@@ -39,18 +39,29 @@ class ApiKeyManager {
     await prefs.setString(_preferredMapProviderPref, provider);
     
     if (provider == 'google') {
-      AppConfig.useGoogleMaps = true;
+      final key = (AppConfig.googleMapsApiKey ?? '').trim();
+      final keyValid = isValidGoogleMapsApiKey(key);
+      AppConfig.useGoogleMaps = keyValid;
       AppConfig.useTomTomMaps = false;
+      AppConfig.useOpenStreetMap = !AppConfig.useGoogleMaps;
     } else if (provider == 'tomtom') {
       AppConfig.useGoogleMaps = false;
-      AppConfig.useTomTomMaps = true;
+      final key = (AppConfig.tomtomApiKey ?? '').trim();
+      final keyValid = key.isNotEmpty;
+      AppConfig.useTomTomMaps = keyValid;
+      AppConfig.useOpenStreetMap = !AppConfig.useTomTomMaps;
+    } else if (provider == 'osm' || provider == 'openstreetmap') {
+      AppConfig.useGoogleMaps = false;
+      AppConfig.useTomTomMaps = false;
+      AppConfig.useOpenStreetMap = true;
     }
   }
   
   /// Get preferred map provider
   static Future<String> getPreferredMapProvider() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_preferredMapProviderPref) ?? 'google';
+    // Default to non-Google to avoid crashes if Google Maps isn't configured.
+    return prefs.getString(_preferredMapProviderPref) ?? 'tomtom';
   }
   
   /// Set whether to use only user-provided keys (ignore Django/fallback)
@@ -72,29 +83,44 @@ class ApiKeyManager {
     // Load user API keys
     final userGoogleKey = prefs.getString(_googleMapsKeyPref);
     final userTomTomKey = prefs.getString(_tomtomKeyPref);
-    final preferredProvider = prefs.getString(_preferredMapProviderPref) ?? 'google';
+    if (!prefs.containsKey(_preferredMapProviderPref)) {
+      await prefs.setString(_preferredMapProviderPref, 'tomtom');
+    }
+    final preferredProvider =
+        prefs.getString(_preferredMapProviderPref) ?? 'tomtom';
     final useUserKeysOnly = prefs.getBool(_useUserKeysOnlyPref) ?? false;
     
     // Apply user API keys if available
     if (userGoogleKey != null && userGoogleKey.isNotEmpty) {
       AppConfig.googleMapsApiKey = userGoogleKey;
-      final preview = userGoogleKey.length > 10 ? userGoogleKey.substring(0, 10) : userGoogleKey;
-      print('Loaded user Google Maps API key: $preview...');
+      final preview = userGoogleKey.length >= 10 ? '${userGoogleKey.substring(0, 10)}...' : userGoogleKey;
+      print('Loaded user Google Maps API key: $preview');
     }
     
     if (userTomTomKey != null && userTomTomKey.isNotEmpty) {
       AppConfig.tomtomApiKey = userTomTomKey;
-      final preview = userTomTomKey.length > 10 ? userTomTomKey.substring(0, 10) : userTomTomKey;
-      print('Loaded user TomTom API key: $preview...');
+      final preview = userTomTomKey.length >= 10 ? '${userTomTomKey.substring(0, 10)}...' : userTomTomKey;
+      print('Loaded user TomTom API key: $preview');
     }
     
-    // Set preferred map provider
+    // Set preferred map provider (default TomTom-first to avoid Google native crashes)
     if (preferredProvider == 'google') {
-      AppConfig.useGoogleMaps = true;
+      final key = (AppConfig.googleMapsApiKey ?? '').trim();
+      final keyValid = isValidGoogleMapsApiKey(key);
+      AppConfig.useGoogleMaps = keyValid;
       AppConfig.useTomTomMaps = false;
+      AppConfig.useOpenStreetMap = !AppConfig.useGoogleMaps;
     } else if (preferredProvider == 'tomtom') {
       AppConfig.useGoogleMaps = false;
-      AppConfig.useTomTomMaps = true;
+      final key = (AppConfig.tomtomApiKey ?? '').trim();
+      final keyValid = key.isNotEmpty;
+      AppConfig.useTomTomMaps = keyValid;
+      AppConfig.useOpenStreetMap = !AppConfig.useTomTomMaps;
+    } else if (preferredProvider == 'osm' ||
+        preferredProvider == 'openstreetmap') {
+      AppConfig.useGoogleMaps = false;
+      AppConfig.useTomTomMaps = false;
+      AppConfig.useOpenStreetMap = true;
     }
     
     print('Map provider preference: $preferredProvider');

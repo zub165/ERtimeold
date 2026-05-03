@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'main_screen.dart';
-import 'login_screen.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/django_api_service.dart';
@@ -26,16 +25,19 @@ class _SplashScreenState extends State<SplashScreen> {
   }
   
   Future<void> _initializeApp() async {
-    await context.read<AuthProvider>().loadFromStorage();
+    await context.read<AuthProvider>().checkAuthStatus();
     // Load user API configurations first
     await ApiKeyManager.loadUserApiConfigurations();
     
     // Test Django backend connection
-    bool isConnected = await _apiService.testConnection();
+    final connectionResult = await _apiService.testConnection();
+    bool isConnected = connectionResult.isSuccess;
 
-    setState(() {
-      _connectionTested = true;
-    });
+    if (mounted) {
+      setState(() {
+        _connectionTested = true;
+      });
+    }
     
     // Fetch map configurations from Django backend (only if user hasn't set "user keys only")
     final useUserKeysOnly = await ApiKeyManager.shouldUseUserKeysOnly();
@@ -59,8 +61,25 @@ class _SplashScreenState extends State<SplashScreen> {
           // Update preferences if not set by user
           final preferredProvider = await ApiKeyManager.getPreferredMapProvider();
           if (preferredProvider == 'google') {
-            AppConfig.useGoogleMaps = mapConfigs['enable_google_maps'] ?? true;
+            final googleKey = (AppConfig.googleMapsApiKey ?? '').trim();
+            final googleKeyValid = ApiKeyManager.isValidGoogleMapsApiKey(googleKey);
+            // Only allow Google Maps with a real browser/mobile Maps key shape (avoids native crashes).
+            AppConfig.useGoogleMaps = (mapConfigs['enable_google_maps'] ?? true) && googleKeyValid;
             AppConfig.useTomTomMaps = mapConfigs['enable_tomtom_maps'] ?? false;
+            AppConfig.useOpenStreetMap = !AppConfig.useGoogleMaps && !AppConfig.useTomTomMaps;
+          } else if (preferredProvider == 'tomtom') {
+            final tomtomKey = (AppConfig.tomtomApiKey ?? '').trim();
+            final tomtomKeyValid = tomtomKey.isNotEmpty;
+            // When user prefers TomTom, default backend flag to on so TomTom is used when a key exists.
+            AppConfig.useTomTomMaps =
+                (mapConfigs['enable_tomtom_maps'] ?? true) && tomtomKeyValid;
+            AppConfig.useGoogleMaps = false;
+            AppConfig.useOpenStreetMap = !AppConfig.useTomTomMaps;
+          } else if (preferredProvider == 'osm' ||
+              preferredProvider == 'openstreetmap') {
+            AppConfig.useGoogleMaps = false;
+            AppConfig.useTomTomMaps = false;
+            AppConfig.useOpenStreetMap = true;
           }
           
           print('Map configurations loaded from Django backend');
@@ -88,78 +107,74 @@ class _SplashScreenState extends State<SplashScreen> {
     if (activeTomTomKey != null) {
       AppConfig.tomtomApiKey = activeTomTomKey;
     }
+
+    // Re-apply saved provider against the final resolved keys (Django + user + active).
+    final resolvedPref = await ApiKeyManager.getPreferredMapProvider();
+    await ApiKeyManager.savePreferredMapProvider(resolvedPref);
     
     print('Final API key configuration:');
-    print('- Google Maps: ${AppConfig.googleMapsApiKey != null && AppConfig.googleMapsApiKey!.length > 10 ? AppConfig.googleMapsApiKey!.substring(0, 10) : "null"}...');
-    print('- TomTom: ${AppConfig.tomtomApiKey != null && AppConfig.tomtomApiKey!.length > 10 ? AppConfig.tomtomApiKey!.substring(0, 10) : "null"}...');
-    print('- Preferred: ${AppConfig.useGoogleMaps ? "Google" : "TomTom"}');
+    final googlePreview = AppConfig.googleMapsApiKey != null && AppConfig.googleMapsApiKey!.length >= 10
+        ? '${AppConfig.googleMapsApiKey!.substring(0, 10)}...'
+        : AppConfig.googleMapsApiKey ?? 'null';
+    final tomtomPreview = AppConfig.tomtomApiKey != null && AppConfig.tomtomApiKey!.length >= 10
+        ? '${AppConfig.tomtomApiKey!.substring(0, 10)}...'
+        : AppConfig.tomtomApiKey ?? 'null';
+    print('- Google Maps: $googlePreview');
+    print('- TomTom: $tomtomPreview');
+    print(
+        '- Active map: ${AppConfig.useGoogleMaps ? "Google" : AppConfig.useTomTomMaps ? "TomTom" : "OpenStreetMap"}');
     
-    setState(() {
-      _apiKeysLoaded = true;
-    });
+    if (mounted) {
+      setState(() {
+        _apiKeysLoaded = true;
+      });
+    }
     
     // Request permissions
     await _requestPermissions();
     
     // Wait for splash screen effect
     await Future.delayed(Duration(seconds: 2));
-    
-    final auth = context.read<AuthProvider>();
-    
-    // If authenticated, validate token
-    if (auth.isAuthenticated) {
-      print('🔐 Found stored auth token, validating...');
-      bool tokenValid = await auth.validateStoredToken();
-      if (!tokenValid) {
-        print('❌ Stored token invalid, showing login screen');
-      } else {
-        print('✅ Token valid, proceeding to main screen');
-      }
-    }
-    
-    // Navigate to login quickly if not authenticated, else to main screen
-    if (!auth.isAuthenticated) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => LoginScreen(
-            onLoggedIn: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MainScreen(backendConnected: isConnected),
-                ),
-              );
-            },
-          ),
-        ),
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => MainScreen(backendConnected: isConnected),
-        ),
-      );
-    }
+
+    if (!mounted) return;
+
+    // Guest mode: Always allow access to non-account features.
+    // Login remains available from Profile/Settings when needed.
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MainScreen(backendConnected: isConnected),
+      ),
+    );
   }
   
   Future<void> _requestPermissions() async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.location,
-      Permission.locationWhenInUse,
-    ].request();
-    
-    // Handle permission results if needed
-    if (statuses[Permission.location] != PermissionStatus.granted) {
-      print('Location permission not granted');
+    try {
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.location,
+        Permission.locationWhenInUse,
+      ].request();
+      
+      // Handle permission results
+      if (statuses[Permission.location] == PermissionStatus.granted) {
+        print('✅ Location permission granted');
+      } else if (statuses[Permission.location] == PermissionStatus.denied) {
+        print('⚠️ Location permission denied - app will use default location');
+      } else if (statuses[Permission.location] == PermissionStatus.permanentlyDenied) {
+        print('❌ Location permission permanently denied - app will use default location');
+      } else {
+        print('⚠️ Location permission status: ${statuses[Permission.location]}');
+      }
+    } catch (e) {
+      print('Error requesting permissions: $e');
     }
   }
   
   @override
   Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
     return Scaffold(
-      backgroundColor: Color(0xFF5DADE2), // Light blue matching the design
+      backgroundColor: primary,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -182,7 +197,7 @@ class _SplashScreenState extends State<SplashScreen> {
               child: Icon(
                 Icons.local_hospital,
                 size: 80,
-                color: Color(0xFF5DADE2),
+                color: primary,
               ),
             ),
             SizedBox(height: 30),
@@ -238,8 +253,11 @@ class _SplashScreenState extends State<SplashScreen> {
     // No hardcoded fallback keys - use demo mode
     AppConfig.googleMapsApiKey = null;
     AppConfig.tomtomApiKey = null;
-    AppConfig.useGoogleMaps = true;
+    // Prefer non-Google providers by default to avoid crashes when Google keys/SDK
+    // are not available (especially on iOS without proper setup).
+    AppConfig.useGoogleMaps = false;
     AppConfig.useTomTomMaps = false;
+    AppConfig.useOpenStreetMap = true;
     print('No API keys available - will use demo mode or user-provided keys');
   }
 }

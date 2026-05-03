@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart' as google_maps;
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:flutter_map/flutter_map.dart' as fmap;
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gmap;
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../providers/location_provider.dart';
-import '../providers/hospital_provider.dart';
-import '../services/django_api_service.dart';
-import '../services/api_key_manager.dart';
-import '../config/app_config.dart';
-import '../config/units_config.dart';
+import 'package:geolocator/geolocator.dart';
 
-enum MapProvider { openStreetMap, googleMaps, tomTomMaps }
+import '../config/app_config.dart';
+import '../services/api_key_manager.dart';
+import '../models/hospital.dart';
+import '../providers/hospital_provider.dart';
+import '../providers/location_provider.dart';
 
 class MapsScreen extends StatefulWidget {
   @override
@@ -19,206 +18,40 @@ class MapsScreen extends StatefulWidget {
 }
 
 class _MapsScreenState extends State<MapsScreen> {
-  google_maps.GoogleMapController? _googleMapController;
-  MapController _openStreetMapController = MapController();
-  MapController _tomTomMapController = MapController();
-  Set<google_maps.Marker> _googleMarkers = {};
-  List<Marker> _openStreetMarkers = [];
-  List<Marker> _tomTomMarkers = [];
-  MapProvider _currentProvider = MapProvider.openStreetMap;
-  String? _activeGoogleKey;
-  String? _activeTomTomKey;
-  bool _keysLoaded = false;
-  
-  @override
-  void initState() {
-    super.initState();
-    _refreshApiKeys();
+  gmap.GoogleMapController? _googleMapController;
+  final fmap.MapController _osmMapController = fmap.MapController();
+  bool _googleMapsError = false;
+  Hospital? _selectedHospital;
+
+  void _refreshMarkers() {
+    setState(() {});
   }
-  
-  Future<void> _refreshApiKeys() async {
-    // Refresh active API keys from ApiKeyManager
-    final googleKey = await ApiKeyManager.getActiveGoogleMapsApiKey();
-    final tomTomKey = await ApiKeyManager.getActiveTomTomApiKey();
-    
-    // Update AppConfig to reflect active keys
-    if (googleKey != null) {
-      AppConfig.googleMapsApiKey = googleKey;
-    }
-    if (tomTomKey != null) {
-      AppConfig.tomtomApiKey = tomTomKey;
-    }
-    
-    if (!mounted) return;
-    
-    setState(() {
-      _activeGoogleKey = googleKey;
-      _activeTomTomKey = tomTomKey;
-      _keysLoaded = true;
-    });
-    
-    _selectMapProvider();
-    _loadHospitalMarkers();
-  }
-  
-  void _selectMapProvider() {
-    // Priority: TomTom > Google > OpenStreetMap (default)
-    if (_activeTomTomKey != null && _activeTomTomKey!.isNotEmpty) {
-      _currentProvider = MapProvider.tomTomMaps;
-    } else if (_activeGoogleKey != null && _activeGoogleKey!.isNotEmpty) {
-      _currentProvider = MapProvider.googleMaps;
-    } else {
-      _currentProvider = MapProvider.openStreetMap;
-    }
-  }
-  
-  String get _mapTitle {
-    switch (_currentProvider) {
-      case MapProvider.googleMaps:
-        return 'Hospital Map (Google Maps)';
-      case MapProvider.tomTomMaps:
-        return 'Hospital Map (TomTom)';
-      case MapProvider.openStreetMap:
-        return 'Hospital Map (OpenStreetMap)';
-    }
-  }
-  
-  void _loadHospitalMarkers() {
-    final hospitalProvider = Provider.of<HospitalProvider>(context, listen: false);
-    
-    switch (_currentProvider) {
-      case MapProvider.googleMaps:
-        _loadGoogleMarkers(hospitalProvider);
-        break;
-      case MapProvider.tomTomMaps:
-        _loadTomTomMarkers(hospitalProvider);
-        break;
-      case MapProvider.openStreetMap:
-        _loadOpenStreetMarkers(hospitalProvider);
-        break;
-    }
-  }
-  
-  void _loadGoogleMarkers(HospitalProvider hospitalProvider) {
-    setState(() {
-      _googleMarkers = hospitalProvider.hospitals.map((hospital) {
-        return google_maps.Marker(
-          markerId: google_maps.MarkerId(hospital.id),
-          position: google_maps.LatLng(hospital.latitude, hospital.longitude),
-          infoWindow: google_maps.InfoWindow(
-            title: hospital.name,
-            snippet: '${UnitsConfig.formatDistanceOrNull(hospital.distance)} away • ${hospital.rating != null ? hospital.rating!.toStringAsFixed(1) : "—"}⭐',
-          ),
-          icon: google_maps.BitmapDescriptor.defaultMarkerWithHue(
-              google_maps.BitmapDescriptor.hueRed),
-          onTap: () => _showHospitalInfo(hospital),
-        );
-      }).toSet();
-    });
-  }
-  
-  void _loadTomTomMarkers(HospitalProvider hospitalProvider) {
-    setState(() {
-      _tomTomMarkers = hospitalProvider.hospitals.map((hospital) {
-        return Marker(
-          point: LatLng(hospital.latitude, hospital.longitude),
-          width: 40,
-          height: 40,
-          child: GestureDetector(
-            onTap: () => _showHospitalInfo(hospital),
-            child: Column(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 4,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.local_hospital,
-                    color: Color(0xFFD7282C), // TomTom red
-                    size: 28,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }).toList();
-    });
-  }
-  
-  void _loadOpenStreetMarkers(HospitalProvider hospitalProvider) {
-    setState(() {
-      _openStreetMarkers = hospitalProvider.hospitals.map((hospital) {
-        return Marker(
-          point: LatLng(hospital.latitude, hospital.longitude),
-          width: 40,
-          height: 40,
-          child: GestureDetector(
-            onTap: () => _showHospitalInfo(hospital),
-            child: Column(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 4,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.local_hospital,
-                    color: Colors.red,
-                    size: 28,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }).toList();
-    });
-  }
-  
+
   void _openDirections(Hospital hospital) async {
     try {
-      // Try Google Maps app first
-      final String googleMapsAppUrl = 
+      final String googleMapsAppUrl =
           'comgooglemaps://?daddr=${hospital.latitude},${hospital.longitude}&directionsmode=driving';
-      
+
       if (await canLaunchUrl(Uri.parse(googleMapsAppUrl))) {
         await launchUrl(
-          Uri.parse(googleMapsAppUrl), 
-          mode: LaunchMode.externalApplication
+          Uri.parse(googleMapsAppUrl),
+          mode: LaunchMode.externalApplication,
         );
-        Navigator.pop(context); // Close the bottom sheet
+        if (mounted) Navigator.pop(context);
         return;
       }
-      
-      // Fallback to web Google Maps
-      final String webMapsUrl = 
+
+      final String webMapsUrl =
           'https://www.google.com/maps/dir/?api=1&destination=${hospital.latitude},${hospital.longitude}';
-      
+
       if (await canLaunchUrl(Uri.parse(webMapsUrl))) {
         await launchUrl(
-          Uri.parse(webMapsUrl), 
-          mode: LaunchMode.externalApplication
+          Uri.parse(webMapsUrl),
+          mode: LaunchMode.externalApplication,
         );
-        Navigator.pop(context); // Close the bottom sheet
+        if (mounted) Navigator.pop(context);
       } else {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Could not open maps'),
@@ -227,6 +60,7 @@ class _MapsScreenState extends State<MapsScreen> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error opening directions: $e'),
@@ -237,6 +71,9 @@ class _MapsScreenState extends State<MapsScreen> {
   }
 
   void _showHospitalInfo(Hospital hospital) {
+    setState(() {
+      _selectedHospital = hospital;
+    });
     showModalBottomSheet(
       context: context,
       builder: (context) => Container(
@@ -262,9 +99,9 @@ class _MapsScreenState extends State<MapsScreen> {
               children: [
                 Icon(Icons.star, color: Colors.amber, size: 20),
                 SizedBox(width: 5),
-                Text('Rating: ${hospital.rating != null ? hospital.rating!.toStringAsFixed(1) : "—"}'),
+                Text('Rating: ${hospital.rating.toStringAsFixed(1)}'),
                 Spacer(),
-                Text('${UnitsConfig.formatDistanceOrNull(hospital.distance)} away'),
+                Text('${hospital.distance.toStringAsFixed(1)} km away'),
               ],
             ),
             SizedBox(height: 20),
@@ -276,7 +113,7 @@ class _MapsScreenState extends State<MapsScreen> {
                     icon: Icon(Icons.directions),
                     label: Text('Directions'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF5DADE2),
+                      backgroundColor: Theme.of(context).colorScheme.primary,
                       foregroundColor: Colors.white,
                     ),
                   ),
@@ -298,116 +135,227 @@ class _MapsScreenState extends State<MapsScreen> {
       ),
     );
   }
-  
+
+  Set<gmap.Marker> _buildGoogleMarkers(List<Hospital> hospitals) {
+    return hospitals.map((hospital) {
+      return gmap.Marker(
+        markerId: gmap.MarkerId(hospital.id),
+        position: gmap.LatLng(hospital.latitude, hospital.longitude),
+        infoWindow: gmap.InfoWindow(
+          title: hospital.name,
+          snippet: '${hospital.distance.toStringAsFixed(1)} km away',
+        ),
+        icon: gmap.BitmapDescriptor.defaultMarkerWithHue(gmap.BitmapDescriptor.hueRed),
+        onTap: () => _showHospitalInfo(hospital),
+      );
+    }).toSet();
+  }
+
+  List<fmap.Marker> _buildOsmMarkers(List<Hospital> hospitals) {
+    return hospitals.map((hospital) {
+      return fmap.Marker(
+        point: ll.LatLng(hospital.latitude, hospital.longitude),
+        width: 40,
+        height: 40,
+        child: GestureDetector(
+          onTap: () => _showHospitalInfo(hospital),
+          child: Icon(
+            Icons.location_on,
+            color: Colors.redAccent,
+            size: 36,
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  Future<void> _confirmAndCall911() async {
+    final shouldCall = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Call 911?'),
+        content: const Text('Only call 911 for emergencies. Do you want to place a call now?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Call 911'),
+          ),
+        ],
+      ),
+    );
+    if (shouldCall != true) return;
+    await launchUrl(Uri.parse('tel:911'), mode: LaunchMode.externalApplication);
+  }
+
+  Widget _buildClosestBanner(List<Hospital> hospitals) {
+    if (hospitals.isEmpty) return const SizedBox.shrink();
+    final sorted = [...hospitals]..sort((a, b) => a.distance.compareTo(b.distance));
+    final closest = sorted.first;
+    final mins = (closest.distance * 2.2).round().clamp(1, 120); // simple estimate
+    return GestureDetector(
+      onTap: () => _openDirections(closest),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.black.withAlpha(160),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.directions, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Closest ER is about $mins mins away. Tap for directions.',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoBanner(String message, {Color color = Colors.blueGrey}) {
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info, color: color),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build fallback map (TomTom or OSM) when Google Maps is unavailable
+  Widget _buildFallbackMap(
+    Position location,
+    List<Hospital> hospitals,
+    bool useTomTom,
+    String? tomtomApiKey,
+  ) {
+    final useTomTomTiles = useTomTom && tomtomApiKey != null && tomtomApiKey.isNotEmpty;
+    // Safe to use tomtomApiKey here because useTomTomTiles guarantees it's not null
+    final String safeTomTomKey = tomtomApiKey ?? '';
+    
+    return fmap.FlutterMap(
+      mapController: _osmMapController,
+      options: fmap.MapOptions(
+        initialCenter: ll.LatLng(location.latitude, location.longitude),
+        initialZoom: 13,
+      ),
+      children: [
+        fmap.TileLayer(
+          urlTemplate: useTomTomTiles
+              ? 'https://api.tomtom.com/map/1/tile/basic/main/{z}/{x}/{y}.png?key=$safeTomTomKey'
+              : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          subdomains: useTomTomTiles ? const [] : const ['a', 'b', 'c'],
+          userAgentPackageName: AppConfig.packageName,
+          additionalOptions: useTomTomTiles
+              ? {
+                  'key': safeTomTomKey,
+                }
+              : {},
+        ),
+        fmap.MarkerLayer(markers: _buildOsmMarkers(hospitals)),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
     final locationProvider = Provider.of<LocationProvider>(context);
+    final String googleKeyTrimmed =
+        (AppConfig.googleMapsApiKey ?? '').trim();
+    final bool hasGoogleKey =
+        ApiKeyManager.isValidGoogleMapsApiKey(googleKeyTrimmed);
     
+    // CRITICAL: Never use Google Maps if key is missing, invalid, or if there was a previous error
+    // This prevents GMSServices initialization crash
+    final bool useGoogle = !_googleMapsError && 
+                          AppConfig.useGoogleMaps && 
+                          hasGoogleKey;
+    
+    final bool useTomTom = AppConfig.useTomTomMaps;
+    // Always use OSM as fallback if Google Maps can't be used
+    final bool useOsm = AppConfig.useOpenStreetMap || !useGoogle || _googleMapsError || !hasGoogleKey;
+
+    String? fallbackBanner;
+    final tomtomApiKey = AppConfig.tomtomApiKey;
+    final hasTomTomKey = tomtomApiKey != null && tomtomApiKey.isNotEmpty;
+    
+    if (_googleMapsError) {
+      fallbackBanner = 'Google Maps unavailable. Using ${useTomTom && hasTomTomKey ? "TomTom" : "OpenStreetMap"} instead.';
+    } else if (!useGoogle && useTomTom && !hasTomTomKey) {
+      fallbackBanner = 'TomTom API key missing. Showing OpenStreetMap instead.';
+    } else if (!useGoogle && !hasGoogleKey && AppConfig.useGoogleMaps) {
+      fallbackBanner = 'Google Maps API key missing. Falling back to ${useTomTom && hasTomTomKey ? "TomTom" : "OpenStreetMap"}.';
+    } else if (!useGoogle && useTomTom && hasTomTomKey) {
+      // TomTom is enabled and key is available - no banner needed
+      fallbackBanner = null;
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_mapTitle),
-        backgroundColor: Color(0xFF5DADE2),
+        title: Text('Hospital Map'),
+        backgroundColor: primary,
         foregroundColor: Colors.white,
         actions: [
-          // Map provider selector
-          PopupMenuButton<MapProvider>(
-            icon: Icon(Icons.map),
-            onSelected: (MapProvider provider) {
-              setState(() {
-                _currentProvider = provider;
-                _loadHospitalMarkers();
-              });
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: MapProvider.openStreetMap,
-                child: Row(
-                  children: [
-                    Icon(Icons.public, color: Colors.green),
-                    SizedBox(width: 8),
-                    Text('OpenStreetMap (Free)'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: MapProvider.googleMaps,
-                enabled: _keysLoaded && _activeGoogleKey != null && _activeGoogleKey!.isNotEmpty,
-                child: Row(
-                  children: [
-                    Icon(Icons.map, color: Colors.blue),
-                    SizedBox(width: 8),
-                    Text('Google Maps'),
-                    if (_activeGoogleKey == null || _activeGoogleKey!.isEmpty)
-                      Padding(
-                        padding: EdgeInsets.only(left: 8),
-                        child: Text(
-                          '(No API Key)',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: MapProvider.tomTomMaps,
-                enabled: _keysLoaded && _activeTomTomKey != null && _activeTomTomKey!.isNotEmpty,
-                child: Row(
-                  children: [
-                    Icon(Icons.navigation, color: Color(0xFFD7282C)),
-                    SizedBox(width: 8),
-                    Text('TomTom Maps'),
-                    if (_activeTomTomKey == null || _activeTomTomKey!.isEmpty)
-                      Padding(
-                        padding: EdgeInsets.only(left: 8),
-                        child: Text(
-                          '(No API Key)',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
+          IconButton(
+            icon: const Icon(Icons.call),
+            tooltip: 'Call 911',
+            onPressed: _confirmAndCall911,
           ),
           IconButton(
             icon: Icon(Icons.my_location),
             onPressed: () {
-              if (locationProvider.currentPosition != null) {
-                final userLat = locationProvider.currentPosition!.latitude;
-                final userLng = locationProvider.currentPosition!.longitude;
-                
-                switch (_currentProvider) {
-                  case MapProvider.googleMaps:
-                    if (_googleMapController != null) {
-                      _googleMapController!.animateCamera(
-                        google_maps.CameraUpdate.newLatLng(
-                          google_maps.LatLng(userLat, userLng),
-                        ),
-                      );
-                    }
-                    break;
-                  case MapProvider.tomTomMaps:
-                    _tomTomMapController.move(LatLng(userLat, userLng), 14.0);
-                    break;
-                  case MapProvider.openStreetMap:
-                    _openStreetMapController.move(LatLng(userLat, userLng), 14.0);
-                    break;
-                }
+              final position = locationProvider.currentPosition;
+              if (position == null) return;
+              if (useGoogle && _googleMapController != null) {
+                _googleMapController!.animateCamera(
+                  gmap.CameraUpdate.newLatLng(
+                    gmap.LatLng(position.latitude, position.longitude),
+                  ),
+                );
+              } else if (useOsm) {
+                _osmMapController.move(
+                  ll.LatLng(position.latitude, position.longitude),
+                  13,
+                );
               }
             },
           ),
           IconButton(
             icon: Icon(Icons.refresh),
-            onPressed: () {
-              _refreshApiKeys();
-            },
-            tooltip: 'Refresh Map & API Keys',
+            onPressed: _refreshMarkers,
           ),
         ],
       ),
       body: Consumer<HospitalProvider>(
         builder: (context, hospitalProvider, child) {
-          if (locationProvider.currentPosition == null) {
+          final location = locationProvider.currentPosition;
+          if (location == null) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -419,195 +367,91 @@ class _MapsScreenState extends State<MapsScreen> {
               ),
             );
           }
+
+          final hospitals = hospitalProvider.hospitals;
+          final mapWidgets = <Widget>[];
+
+          if (fallbackBanner != null) {
+            mapWidgets.add(_buildInfoBanner(fallbackBanner));
+          }
+          if (hospitals.isEmpty) {
+            mapWidgets.add(_buildInfoBanner(
+              'No hospitals loaded yet. Run a search to populate the map.',
+              color: Colors.orange,
+            ));
+          }
+
+          Widget mapContent;
+          // CRITICAL SAFETY CHECK: Never create GoogleMap widget if:
+          // 1. useGoogle is false (disabled or key missing)
+          // 2. There was a previous error
+          // 3. Key is null, empty, or too short
+          // This prevents GMSServices.checkServicePreconditions crash
+          final bool canUseGoogle = useGoogle && 
+                                   !_googleMapsError && 
+                                   hasGoogleKey &&
+                                   AppConfig.useGoogleMaps; // Double-check config
           
-          if (hospitalProvider.hospitals.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.local_hospital, size: 64, color: Colors.grey),
-                  SizedBox(height: 20),
-                  Text(
-                    'No hospitals found',
-                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    'Search for hospitals first',
-                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                  ),
-                ],
+          // ABSOLUTE SAFETY: If any condition fails, use fallback
+          if (!canUseGoogle) {
+            // Use fallback map (TomTom or OSM) - SAFE option
+            mapContent = _buildFallbackMap(location, hospitals, useTomTom, tomtomApiKey);
+          } else {
+            // Only create GoogleMap if ALL safety checks pass
+            mapContent = gmap.GoogleMap(
+              key: ValueKey(
+                'google_map_${googleKeyTrimmed.substring(0, googleKeyTrimmed.length > 10 ? 10 : googleKeyTrimmed.length)}',
               ),
+              onMapCreated: (controller) {
+                _googleMapController = controller;
+                // Reset error flag on successful creation
+                if (_googleMapsError) {
+                  setState(() {
+                    _googleMapsError = false;
+                  });
+                }
+              },
+              initialCameraPosition: gmap.CameraPosition(
+                target: gmap.LatLng(location.latitude, location.longitude),
+                zoom: 12,
+              ),
+              markers: _buildGoogleMarkers(hospitals),
+              myLocationEnabled: true,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: true,
+              mapType: gmap.MapType.normal,
             );
           }
-          
-          switch (_currentProvider) {
-            case MapProvider.googleMaps:
-              return _buildGoogleMap(locationProvider);
-            case MapProvider.tomTomMaps:
-              return _buildTomTomMap(locationProvider);
-            case MapProvider.openStreetMap:
-              return _buildOpenStreetMap(locationProvider);
-          }
+
+          // Stack map + closest banner overlay
+          return Column(
+            children: [
+              ...mapWidgets,
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(child: mapContent),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: _buildClosestBanner(hospitals),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
         },
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.pop(context);
         },
-        backgroundColor: Color(0xFF5DADE2),
+        backgroundColor: primary,
         child: Icon(Icons.list, color: Colors.white),
         tooltip: 'Back to List',
       ),
-    );
-  }
-  
-  Widget _buildGoogleMap(LocationProvider locationProvider) {
-    if (_activeGoogleKey == null || _activeGoogleKey!.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red),
-            SizedBox(height: 20),
-            Text(
-              'Google Maps API Key Required',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 10),
-            Text(
-              'Please add your Google Maps API key in Settings',
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      );
-    }
-    
-    return google_maps.GoogleMap(
-      onMapCreated: (google_maps.GoogleMapController controller) {
-        _googleMapController = controller;
-      },
-      initialCameraPosition: google_maps.CameraPosition(
-        target: google_maps.LatLng(
-          locationProvider.currentPosition!.latitude,
-          locationProvider.currentPosition!.longitude,
-        ),
-        zoom: 12.0,
-      ),
-      markers: _googleMarkers,
-      myLocationEnabled: true,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: true,
-      mapType: google_maps.MapType.normal,
-    );
-  }
-  
-  Widget _buildTomTomMap(LocationProvider locationProvider) {
-    final tomTomApiKey = _activeTomTomKey ?? '';
-    
-    if (tomTomApiKey.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red),
-            SizedBox(height: 20),
-            Text(
-              'TomTom API Key Required',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 10),
-            Text(
-              'Please add your TomTom API key in Settings',
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      );
-    }
-    
-    return FlutterMap(
-      mapController: _tomTomMapController,
-      options: MapOptions(
-        initialCenter: LatLng(
-          locationProvider.currentPosition!.latitude,
-          locationProvider.currentPosition!.longitude,
-        ),
-        initialZoom: 12.0,
-        minZoom: 3.0,
-        maxZoom: 18.0,
-      ),
-      children: [
-        TileLayer(
-          urlTemplate: 'https://api.tomtom.com/map/1/tile/basic/main/{z}/{x}/{y}.png?key=$tomTomApiKey',
-          userAgentPackageName: 'com.mywaitime.app',
-          tileDisplay: const TileDisplay.fadeIn(),
-          fallbackUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-        ),
-        MarkerLayer(
-          markers: [
-            // User location marker
-            Marker(
-              point: LatLng(
-                locationProvider.currentPosition!.latitude,
-                locationProvider.currentPosition!.longitude,
-              ),
-              width: 40,
-              height: 40,
-              child: Icon(
-                Icons.my_location,
-                color: Colors.blue,
-                size: 32,
-              ),
-            ),
-            // Hospital markers
-            ..._tomTomMarkers,
-          ],
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildOpenStreetMap(LocationProvider locationProvider) {
-    return FlutterMap(
-      mapController: _openStreetMapController,
-      options: MapOptions(
-        initialCenter: LatLng(
-          locationProvider.currentPosition!.latitude,
-          locationProvider.currentPosition!.longitude,
-        ),
-        initialZoom: 12.0,
-        minZoom: 3.0,
-        maxZoom: 18.0,
-      ),
-      children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.mywaitime.app',
-          tileDisplay: const TileDisplay.fadeIn(),
-        ),
-        MarkerLayer(
-          markers: [
-            // User location marker
-            Marker(
-              point: LatLng(
-                locationProvider.currentPosition!.latitude,
-                locationProvider.currentPosition!.longitude,
-              ),
-              width: 40,
-              height: 40,
-              child: Icon(
-                Icons.my_location,
-                color: Colors.blue,
-                size: 32,
-              ),
-            ),
-            // Hospital markers
-            ..._openStreetMarkers,
-          ],
-        ),
-      ],
     );
   }
 }
