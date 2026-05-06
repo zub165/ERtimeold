@@ -12,7 +12,15 @@ import 'services/auto_sync_service.dart';
 import 'config/app_config.dart';
 import 'app_settings.dart';
 
+import 'dart:async';
 import 'dart:io' show Platform;
+
+/// Detect if running on iOS simulator
+bool _isIOSSimulator() {
+  if (!Platform.isIOS) return false;
+  final home = Platform.environment['HOME'] ?? '';
+  return home.contains('CoreSimulator');
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,13 +33,23 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
   
-  // Force Google Maps OFF for simulator (it crashes without real device keys)
-  // On real device, keys are loaded from backend
-  if (Platform.isIOS) {
+  // Force Google Maps OFF only for iOS simulator (it crashes without real device keys)
+  // On real iOS devices, keys are loaded from backend and Google Maps works normally
+  if (_isIOSSimulator()) {
+    debugPrint('iOS simulator detected - disabling Google Maps to prevent crash');
     AppConfig.useGoogleMaps = false;
-    // Splash + ApiKeyManager set TomTom/OSM from keys; avoid both TomTom and OSM true here.
     AppConfig.useTomTomMaps = false;
     AppConfig.useOpenStreetMap = true;
+  } else if (Platform.isIOS) {
+    // Real iOS device - use keys from backend
+    if (AppConfig.googleMapsApiKey == null || 
+        AppConfig.googleMapsApiKey!.isEmpty || 
+        AppConfig.googleMapsApiKey!.length <= 10) {
+      AppConfig.useGoogleMaps = false;
+      if (!AppConfig.useTomTomMaps) {
+        AppConfig.useOpenStreetMap = true;
+      }
+    }
   } else {
     // Android - use keys from backend
     if (AppConfig.googleMapsApiKey == null || 
@@ -44,13 +62,13 @@ void main() async {
     }
   }
   
-  // Initialize AdMob
-  await MobileAds.instance.initialize();
-  
-  // Initialize Auto Sync Service
-  await AutoSyncService.initialize();
-  
   runApp(MyApp());
+
+  // Avoid Android ANR: never block first frame on service initialization.
+  // These can be slow on emulators / cold starts and don't need to complete
+  // before showing the UI.
+  unawaited(MobileAds.instance.initialize());
+  unawaited(AutoSyncService.initialize());
 }
 
 class MyApp extends StatelessWidget {
