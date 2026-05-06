@@ -2,8 +2,8 @@ class AppConfig {
   // App Information
   static const String appName = 'ER Wait Time';
   static const String packageName = 'com.easytechnologiez.ERTime';
-  static const String version = '5.0.9';
-  static const int versionCode = 58;
+  static const String version = '5.0.10';
+  static const int versionCode = 59;
   
   // Map API Keys - Retrieved dynamically from Django backend or user input
   static String? googleMapsApiKey;
