@@ -21,7 +21,6 @@ class _MapsScreenState extends State<MapsScreen> {
   gmap.GoogleMapController? _googleMapController;
   final fmap.MapController _osmMapController = fmap.MapController();
   bool _googleMapsError = false;
-  Hospital? _selectedHospital;
 
   void _refreshMarkers() {
     setState(() {});
@@ -29,36 +28,20 @@ class _MapsScreenState extends State<MapsScreen> {
 
   void _openDirections(Hospital hospital) async {
     try {
-      final String googleMapsAppUrl =
-          'comgooglemaps://?daddr=${hospital.latitude},${hospital.longitude}&directionsmode=driving';
-
-      if (await canLaunchUrl(Uri.parse(googleMapsAppUrl))) {
-        await launchUrl(
-          Uri.parse(googleMapsAppUrl),
-          mode: LaunchMode.externalApplication,
-        );
+      final ok = await openHospitalDirections(hospital);
+      if (ok) {
         if (mounted) Navigator.pop(context);
         return;
       }
-
-      final String webMapsUrl =
-          'https://www.google.com/maps/dir/?api=1&destination=${hospital.latitude},${hospital.longitude}';
-
-      if (await canLaunchUrl(Uri.parse(webMapsUrl))) {
-        await launchUrl(
-          Uri.parse(webMapsUrl),
-          mode: LaunchMode.externalApplication,
-        );
-        if (mounted) Navigator.pop(context);
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open maps'),
-            backgroundColor: Colors.red,
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not open maps. Try installing Google Maps, or allow your browser to use cellular data.',
           ),
-        );
-      }
+          backgroundColor: Colors.red,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,9 +54,6 @@ class _MapsScreenState extends State<MapsScreen> {
   }
 
   void _showHospitalInfo(Hospital hospital) {
-    setState(() {
-      _selectedHospital = hospital;
-    });
     showModalBottomSheet(
       context: context,
       builder: (context) => Container(
@@ -99,7 +79,9 @@ class _MapsScreenState extends State<MapsScreen> {
               children: [
                 Icon(Icons.star, color: Colors.amber, size: 20),
                 SizedBox(width: 5),
-                Text('Rating: ${hospital.rating.toStringAsFixed(1)}'),
+                Text(
+                  'Rating: ${hospital.rating != null ? hospital.rating!.toStringAsFixed(1) : "No rating"}',
+                ),
                 Spacer(),
                 Text('${hospital.distance.toStringAsFixed(1)} km away'),
               ],

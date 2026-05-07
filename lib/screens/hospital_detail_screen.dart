@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/django_api_service.dart';
-import '../config/units_config.dart';
-import '../services/ad_manager.dart';
+import '../services/local_review_service.dart';
+import '../models/hospital.dart';
+import '../services/auto_sync_service.dart';
+import '../widgets/sync_status_widget.dart';
 
 class HospitalDetailScreen extends StatefulWidget {
   final Hospital hospital;
@@ -20,14 +22,31 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
   String _userComment = '';
   int _waitTimeMinutes = 30;
   bool _isSubmitting = false;
+  bool _isSyncingNow = false;
+  bool _isLoadingPredictedWait = false;
+  int? _predictedWaitMinutes;
   
   final TextEditingController _commentController = TextEditingController();
-  
+
   @override
   void initState() {
     super.initState();
-    // Track hospital view for ad display (Android only)
-    AdManager().incrementAction(actionName: 'viewed_hospital');
+    _loadPredictedWaitTime();
+  }
+
+  Future<void> _loadPredictedWaitTime() async {
+    setState(() {
+      _isLoadingPredictedWait = true;
+    });
+    final m = await _apiService.getSmartWaitTimeMinutes(widget.hospital.id);
+    if (!mounted) return;
+    setState(() {
+      _predictedWaitMinutes = m;
+      _isLoadingPredictedWait = false;
+      if (m != null && m > 0) {
+        _waitTimeMinutes = m;
+      }
+    });
   }
   
   @override
@@ -38,6 +57,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
   
   @override
   Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
     return Scaffold(
       backgroundColor: Colors.white,
       body: CustomScrollView(
@@ -46,7 +66,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
           SliverAppBar(
             expandedHeight: 250,
             pinned: true,
-            backgroundColor: Color(0xFF5DADE2),
+            backgroundColor: primary,
             flexibleSpace: FlexibleSpaceBar(
               title: Text(
                 widget.hospital.name,
@@ -68,8 +88,8 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Color(0xFF5DADE2),
-                      Color(0xFF3498DB),
+                      primary,
+                      Theme.of(context).colorScheme.secondary,
                     ],
                   ),
                 ),
@@ -104,6 +124,10 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
                   // Review Section
                   _buildReviewSection(),
                   SizedBox(height: 20),
+
+                  // Review sync status
+                  _buildSyncSection(),
+                  SizedBox(height: 20),
                   
                   // Submit Button
                   _buildSubmitButton(),
@@ -112,6 +136,71 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSyncSection() {
+    final primary = Theme.of(context).colorScheme.primary;
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Expanded(child: SyncStatusWidget(showDetails: true)),
+            const SizedBox(width: 10),
+            ElevatedButton(
+              onPressed: _isSyncingNow
+                  ? null
+                  : () async {
+                      setState(() => _isSyncingNow = true);
+                      try {
+                        await AutoSyncService.forceSync();
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Sync started. Pending reviews will upload in background.'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      } catch (_) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Could not start sync.'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      } finally {
+                        if (mounted) setState(() => _isSyncingNow = false);
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primary,
+                foregroundColor: Colors.white,
+                disabledForegroundColor: Colors.white70,
+                surfaceTintColor: Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              ),
+              child: _isSyncingNow
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text(
+                      'Sync now',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -143,8 +232,15 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
                 Icon(Icons.phone, color: Colors.blue),
                 SizedBox(width: 8),
                 Text(
-                  widget.hospital.phone,
-                  style: TextStyle(fontSize: 16),
+                  widget.hospital.phone.isNotEmpty 
+                    ? widget.hospital.phone 
+                    : 'Phone: Not Available',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: widget.hospital.phone.isNotEmpty 
+                      ? Colors.black 
+                      : Colors.grey[600],
+                  ),
                 ),
               ],
             ),
@@ -154,12 +250,14 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
                 Icon(Icons.star, color: Colors.amber),
                 SizedBox(width: 8),
                 Text(
-                  'Rating: ${widget.hospital.rating != null ? (widget.hospital.rating! / 2).toStringAsFixed(1) : "—"}/5',
+                  widget.hospital.rating != null
+                      ? 'Rating: ${widget.hospital.rating!.toStringAsFixed(1)}/5.0'
+                      : 'Rating: No rating yet',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                 ),
                 Spacer(),
                 Text(
-                  '${UnitsConfig.formatDistanceOrNull(widget.hospital.distance)} away',
+                  '${widget.hospital.distance.toStringAsFixed(1)} km away',
                   style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
               ],
@@ -190,6 +288,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
   }
   
   Widget _buildActionButtons() {
+    final primary = Theme.of(context).colorScheme.primary;
     return Row(
       children: [
         Expanded(
@@ -198,7 +297,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
             icon: Icon(Icons.directions),
             label: Text('Directions'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF5DADE2),
+              backgroundColor: primary,
               foregroundColor: Colors.white,
               padding: EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
@@ -214,7 +313,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
             icon: Icon(Icons.phone),
             label: Text('Call'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Color(0xFF5DADE2),
+              foregroundColor: primary,
               padding: EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -227,6 +326,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
   }
   
   Widget _buildWaitTimeSection() {
+    final primary = Theme.of(context).colorScheme.primary;
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -237,17 +337,35 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.access_time, color: Color(0xFF5DADE2)),
+                Icon(Icons.access_time, color: primary),
                 SizedBox(width: 8),
                 Text(
-                  'Report ER Wait Time',
+                  'ER Wait Time',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                Spacer(),
+                if (_isLoadingPredictedWait)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
               ],
             ),
+            SizedBox(height: 12),
+            if (_predictedWaitMinutes != null && _predictedWaitMinutes! > 0)
+              Text(
+                'Predicted: ${_formatWaitTime(_predictedWaitMinutes!)}',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: primary),
+              )
+            else if (!_isLoadingPredictedWait)
+              Text(
+                'Wait time unavailable',
+                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+              ),
             SizedBox(height: 16),
             Text(
               'How long did you wait in the ER?',
@@ -265,7 +383,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
                     min: 5,
                     max: 300,
                     divisions: 59,
-                    activeColor: Color(0xFF5DADE2),
+                    activeColor: primary,
                     label: '$_waitTimeMinutes min',
                     onChanged: (value) {
                       setState(() {
@@ -282,16 +400,16 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Color(0xFF5DADE2).withOpacity(0.1),
+                color: primary.withAlpha(26),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Color(0xFF5DADE2)),
+                border: Border.all(color: primary),
               ),
               child: Text(
                 'Wait Time: ${_formatWaitTime(_waitTimeMinutes)}',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF5DADE2),
+                  color: primary,
                 ),
               ),
             ),
@@ -302,6 +420,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
   }
   
   Widget _buildReviewSection() {
+    final primary = Theme.of(context).colorScheme.primary;
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -312,7 +431,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.rate_review, color: Color(0xFF5DADE2)),
+                Icon(Icons.rate_review, color: primary),
                 SizedBox(width: 8),
                 Text(
                   'Write a Review',
@@ -367,7 +486,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Color(0xFF5DADE2)),
+                  borderSide: BorderSide(color: primary),
                 ),
               ),
               onChanged: (value) {
@@ -383,6 +502,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
   }
   
   Widget _buildSubmitButton() {
+    final primary = Theme.of(context).colorScheme.primary;
     return SizedBox(
       width: double.infinity,
       height: 50,
@@ -399,11 +519,11 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
               )
             : Icon(Icons.send),
         label: Text(
-          _isSubmitting ? 'Submitting...' : 'Submit Review & Wait Time',
+          _isSubmitting ? 'Submitting to AI Backend...' : 'Submit Review & Wait Time',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Color(0xFF5DADE2),
+          backgroundColor: primary,
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
@@ -429,42 +549,11 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
   
   void _openDirections() async {
     try {
-      // Try Google Maps app first
-      final String googleMapsAppUrl = 
-          'comgooglemaps://?daddr=${widget.hospital.latitude},${widget.hospital.longitude}&directionsmode=driving';
-      
-      if (await canLaunchUrl(Uri.parse(googleMapsAppUrl))) {
-        await launchUrl(
-          Uri.parse(googleMapsAppUrl), 
-          mode: LaunchMode.externalApplication
-        );
-        return;
-      }
-      
-      // Fallback to Apple Maps on iOS or web Google Maps
-      final String fallbackUrl = 
-          'https://maps.apple.com/?daddr=${widget.hospital.latitude},${widget.hospital.longitude}';
-      
-      if (await canLaunchUrl(Uri.parse(fallbackUrl))) {
-        await launchUrl(
-          Uri.parse(fallbackUrl), 
-          mode: LaunchMode.externalApplication
-        );
-        return;
-      }
-      
-      // Final fallback to web Google Maps
-      final String webMapsUrl = 
-          'https://www.google.com/maps/dir/?api=1&destination=${widget.hospital.latitude},${widget.hospital.longitude}';
-      
-      if (await canLaunchUrl(Uri.parse(webMapsUrl))) {
-        await launchUrl(
-          Uri.parse(webMapsUrl), 
-          mode: LaunchMode.externalApplication
-        );
-      } else {
-        _showErrorSnackBar('Could not open any maps application');
-      }
+      final ok = await openHospitalDirections(widget.hospital);
+      if (ok) return;
+      _showErrorSnackBar(
+        'Could not open maps. On iPhone: Settings → Cellular → allow Safari (or Chrome). Install Google Maps for best results.',
+      );
     } catch (e) {
       _showErrorSnackBar('Error opening directions: $e');
     }
@@ -496,13 +585,14 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
   }
   
   void _showPhoneDialog(String phoneNumber) {
+    final primary = Theme.of(context).colorScheme.primary;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: Row(
           children: [
-            Icon(Icons.phone, color: Color(0xFF5DADE2)),
+            Icon(Icons.phone, color: primary),
             SizedBox(width: 8),
             Text('Hospital Phone'),
           ],
@@ -517,7 +607,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF5DADE2),
+                color: primary,
               ),
             ),
           ],
@@ -525,7 +615,7 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Close', style: TextStyle(color: Color(0xFF5DADE2))),
+            child: Text('Close', style: TextStyle(color: primary)),
           ),
         ],
       ),
@@ -533,13 +623,8 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
   }
   
   void _submitReview() async {
-    final comment = _userComment.trim();
-    if (comment.isEmpty) {
+    if (_userComment.trim().isEmpty) {
       _showErrorSnackBar('Please write a review comment');
-      return;
-    }
-    if (comment.length < 10) {
-      _showErrorSnackBar('Please write at least 10 characters so your review is helpful to others.');
       return;
     }
     
@@ -548,26 +633,32 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
     });
     
     try {
-      final result = await _apiService.submitEnhancedReview(
+      // First, save review locally for offline-first approach
+      print('💾 Saving review locally...');
+      final reviewId = await LocalReviewService.saveReviewLocally(
         hospitalId: widget.hospital.id,
+        hospitalName: widget.hospital.name,
         rating: _userRating,
         comment: _userComment.trim(),
         waitTimeMinutes: _waitTimeMinutes,
         userLocation: '${widget.hospital.latitude},${widget.hospital.longitude}',
-        hospitalDetails: widget.hospital, // Pass full hospital details for external API hospitals
+        externalIds: widget.hospital.externalIds,
       );
-
-      if (!mounted) return;
-      if (result.success) {
-        // Track review submission for ad display (Android only)
-        AdManager().incrementAction(actionName: 'submitted_review');
-        _showSuccessDialog(aiUpdated: result.aiUpdated);
+      
+      if (reviewId > 0) {
+        print('✅ Review saved locally with ID: $reviewId');
+        
+        // Show success message immediately (local-first approach)
+        _showSuccessDialog();
+        
+        // Attempt to sync with Django backend in background
+        _syncReviewInBackground(reviewId);
+        
       } else {
-        _showErrorSnackBar('Failed to submit review. Please try again.');
+        _showErrorSnackBar('Failed to save review locally. Please try again.');
       }
     } catch (e) {
-      if (!mounted) return;
-      _showErrorSnackBar('Error submitting review. Please check connection and try again.');
+      _showErrorSnackBar('Error saving review: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -577,7 +668,94 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
     }
   }
   
-  void _showSuccessDialog({bool aiUpdated = false}) {
+  /// Sync review with Django backend in background
+  void _syncReviewInBackground(int reviewId) async {
+    try {
+      print('🔄 Syncing review $reviewId with Django backend...');
+      
+      // Get the review data
+      final reviews = await LocalReviewService.getPendingReviews();
+      final matches = reviews.where((r) => r['id'] == reviewId);
+      if (matches.isEmpty) {
+        print('⚠️ Review $reviewId not found in pending list — may have already synced');
+        return;
+      }
+      final review = matches.first;
+      
+      // Optional: Call dedup preview to get best match
+      Map<String, String>? externalIds;
+      try {
+        final preview = await _apiService.dedupPreview(
+          name: widget.hospital.name,
+          city: widget.hospital.address.split(',').length > 1 ? widget.hospital.address.split(',')[1].trim() : null,
+          state: widget.hospital.address.split(',').length > 2 ? widget.hospital.address.split(',')[2].trim() : null,
+          latitude: widget.hospital.latitude,
+          longitude: widget.hospital.longitude,
+          address: widget.hospital.address,
+          externalIds: widget.hospital.externalIds,
+        );
+        
+        if (preview != null && preview['best_match'] != null) {
+          final bestMatch = preview['best_match'] as Map<String, dynamic>;
+          if (bestMatch['hospital_id'] != null) {
+            print('✅ Dedup preview found best match: ${bestMatch['hospital_id']}');
+            // Use the matched hospital ID for submission
+            review['hospital_id'] = bestMatch['hospital_id'].toString();
+          }
+          if (bestMatch['external_ids'] != null) {
+            externalIds = Map<String, String>.from(bestMatch['external_ids']);
+          }
+        }
+      } catch (e) {
+        print('⚠️ Dedup preview failed, using original hospital ID: $e');
+      }
+      
+      // Attempt to sync with Django backend
+      final success = await _apiService.submitEnhancedReview(
+        hospitalId: review['hospital_id'],
+        rating: review['rating'],
+        comment: review['comment'],
+        waitTimeMinutes: review['wait_time'],
+        userLocation: review['user_location'],
+        externalIds: externalIds,
+      );
+      
+      if (success) {
+        // Mark as synced
+        await LocalReviewService.markReviewAsSynced(reviewId);
+        print('✅ Review $reviewId synced with Django backend');
+        
+        // Also store user activity to backend
+        try {
+          await _apiService.submitUserActivity(
+            activity: 'review_submitted',
+            details: 'User submitted review and wait time for ${widget.hospital.name}',
+            hospitalId: widget.hospital.id,
+            metadata: {
+              'rating': _userRating,
+              'wait_time_minutes': _waitTimeMinutes,
+              'comment_length': _userComment.trim().length,
+              'hospital_name': widget.hospital.name,
+              'local_review_id': reviewId,
+            },
+          );
+          print('✅ User activity stored to backend');
+        } catch (e) {
+          print('⚠️ Could not store user activity: $e');
+        }
+      } else {
+        // Mark sync attempt failed
+        await LocalReviewService.incrementSyncAttempts(reviewId, 'API call failed');
+        print('⚠️ Review $reviewId sync failed, will retry later');
+      }
+    } catch (e) {
+      // Mark sync attempt failed
+      await LocalReviewService.incrementSyncAttempts(reviewId, e.toString());
+      print('❌ Error syncing review $reviewId: $e');
+    }
+  }
+  
+  void _showSuccessDialog() {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -590,40 +768,16 @@ class _HospitalDetailScreenState extends State<HospitalDetailScreen> {
             Text('Review Submitted!'),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Thank you! Your review and wait time have been saved to the Django backend and sent to our AI-enhanced system. This data will help improve hospital ratings and wait time predictions for other users.',
-            ),
-            if (aiUpdated) ...[
-              SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.auto_awesome, color: Color(0xFF5DADE2), size: 20),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Your feedback is improving predictions for other users.',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF5DADE2),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
+        content: Text(
+          'Thank you! Your review has been saved and will be sent to our AI-enhanced system for analysis. This data will help improve hospital ratings and wait time predictions for other users.',
         ),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop();
+              Navigator.of(context).pop(); // Close dialog
+              Navigator.of(context).pop(); // Go back to main screen
             },
-            child: Text('OK', style: TextStyle(color: Color(0xFF5DADE2))),
+            child: Text('OK', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
           ),
         ],
       ),

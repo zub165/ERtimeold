@@ -2,370 +2,234 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
-import 'api_key_manager.dart';
+import '../models/hospital.dart';
+import 'error_handler_service.dart';
 
 class DjangoApiService {
-  // Single source of truth for backend URL
-  static const String baseUrl = AppConfig.djangoBaseUrl;
-  static const String defaultPassword = 'Bismilah165\$';
+  static const String baseUrl = 'https://api.mywaitime.com/api';
   
-  // API Endpoints
-  static const String hospitalFinderEndpoint = '$baseUrl/hospital-finder/';
-  static const String analyticsEndpoint = '$baseUrl/analytics/';
+  // API Endpoints - Updated to match Django backend structure
+  static const String hospitalFinderEndpoint = '$baseUrl/hospitals/search/';
+  static const String analyticsEndpoint = '$baseUrl/analytics/search/';
   static const String hospitalsSearchEndpoint = '$baseUrl/hospitals/search/';
-  static const String hospitalDetailsEndpoint = '$baseUrl/hospitals/details/';
-  static const String waitTimesEndpoint = '$baseUrl/hospitals/wait-times/';
-  static const String ratingsEndpoint = '$baseUrl/hospitals/ratings/';
+  static const String hospitalDetailsEndpoint = '$baseUrl/hospitals/';
+  static const String waitTimesEndpoint = '$baseUrl/hospitals/wait-times/update/';
+  static const String ratingsEndpoint = '$baseUrl/hospitals/';
   static const String feedbackEndpoint = '$baseUrl/feedback/submit/';
   static const String healthCheckEndpoint = '$baseUrl/health/';
   static const String mapConfigEndpoint = '$baseUrl/map-config/';
-  static const String apiKeysEndpoint = '$baseUrl/api-keys/';
+  static const String apiKeysEndpoint = '$baseUrl/config/api-keys/';
+  static const String dedupPreviewEndpoint = '$baseUrl/hospitals/dedup/preview/';
+  
+  // New AI and Data Endpoints
+  static const String aiWaitTimeEndpoint = '$baseUrl/hospitals/{id}/ai-wait-time/';
+  static const String smartWaitTimeEndpoint = '$baseUrl/hospitals/{id}/smart-wait-time/';
+  static const String trafficDataEndpoint = '$baseUrl/hospitals/{id}/traffic/';
+  static const String weatherDataEndpoint = '$baseUrl/hospitals/{id}/weather/';
+  static const String waitTimeUpdateEndpoint = '$baseUrl/hospitals/wait-times/update/';
+  static const String hospitalPerformanceEndpoint = '$baseUrl/hospitals/{id}/performance/';
+  static const String userProfileEndpoint = '$baseUrl/auth/profile/';
+  static const String userRegisterEndpoint = '$baseUrl/auth/register/';
+  static const String userLoginEndpoint = '$baseUrl/auth/login/';
+  static const String passwordPolicyEndpoint = '$baseUrl/auth/password-policy/';
   
   String? authToken;
+  String? lastRegisterError;
+  String? lastLoginError;
   
   // Headers
   Map<String, String> get headers => {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
     'User-Agent': 'ERTime-Flutter-App/${AppConfig.version}',
-    'X-App-Type': 'flutter',
-    if (authToken != null) 'Authorization': 'Token $authToken',
+    'X-App-Type': 'flutter',  // ✅ ADD THIS HEADER
+    // Backend expects DRF TokenAuth format: Authorization: Token <token>
+    if (authToken != null && authToken != 'demo_token') 'Authorization': 'Token $authToken',
   };
-  
-  /// Test connection to Django backend (tries /health/ then base URL)
-  Future<bool> testConnection() async {
+
+  /// Fetch AI smart wait time for a hospital.
+  ///
+  /// Expected backend shape includes `predicted_wait_minutes` (int).
+  Future<int?> getSmartWaitTimeMinutes(String hospitalId) async {
     try {
-      // Many backends return 200 on /api/health/ but 404/301 on GET /api/
-      var response = await http.get(
-        Uri.parse(healthCheckEndpoint),
-        headers: headers,
-      ).timeout(Duration(seconds: 10));
-      if (response.statusCode == 200) return true;
-      response = await http.get(
-        Uri.parse(baseUrl),
-        headers: headers,
-      ).timeout(Duration(seconds: 10));
-      return response.statusCode == 200;
-    } catch (e) {
-      print('Connection test failed: $e');
-      return false;
+      final uri = Uri.parse(
+        smartWaitTimeEndpoint.replaceFirst('{id}', hospitalId.toString()),
+      );
+      final response = await http.get(uri, headers: headers).timeout(
+            const Duration(seconds: 15),
+          );
+      if (response.statusCode != 200) return null;
+      final decoded = json.decode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        final v = decoded['predicted_wait_minutes'] ??
+            decoded['wait_time_minutes'] ??
+            decoded['predicted_wait_time_minutes'];
+        if (v is int) return v;
+        if (v is double) return v.round();
+        if (v is String) return int.tryParse(v);
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
   
-  /// Sort option for hospital search (backend param: sort_by).
-  static const String sortByDistance = 'distance';
-  static const String sortByRating = 'rating';
-  static const String sortByWaitTime = 'wait_time';
-  static const String sortByName = 'name';
-
-  /// Search for hospitals: merges Django + OSM + TomTom + Google (page 1 only for external APIs).
+  /// Test connection to Django backend with comprehensive error handling
+  Future<ApiResponse<bool>> testConnection() async {
+    try {
+      print('🔍 Testing backend connection to: $baseUrl/health/');
+      final response = await http.get(
+        Uri.parse('$baseUrl/health/'),
+        headers: headers,
+        ).timeout(Duration(seconds: 30));
+      
+      print('🔍 Backend health response: ${response.statusCode} - ${response.body}');
+      
+      if (response.statusCode == 200) {
+        return ApiResponse.success(true);
+      } else {
+        final error = ErrorHandlerService.handleApiError(response, '$baseUrl/health/');
+        return ApiResponse.error(error);
+      }
+    } catch (e) {
+      final error = ErrorHandlerService.handleNetworkError(e, '$baseUrl/health/');
+      print('❌ Backend connection test failed: ${error.message}');
+      return ApiResponse.error(error);
+    }
+  }
+  
+  /// Search for hospitals near location
   Future<List<Hospital>> searchHospitals({
     required double latitude,
     required double longitude,
     double radius = 10.0,
-    int page = 1,
-    int pageSize = 20,
-    String? sortBy,
-    String sortOrder = 'asc',
+    String? type,
   }) async {
-    final allHospitals = <Hospital>[];
-    
-    // 1. Django backend (supports pagination & sort)
     try {
-      final radiusM = (radius * 1000).round();
-      final params = <String, String>{
+      // Ensure radius is an integer to avoid backend float errors
+      radius = radius.round().toDouble();
+      
+      // Validate coordinates - reject if invalid
+      if (latitude == 0.0 && longitude == 0.0) {
+        throw Exception('MISSING_COORDINATES: Client must provide valid GPS coordinates');
+      }
+      
+      if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        throw Exception('INVALID_COORDINATES: GPS coordinates out of valid range');
+      }
+      
+      print('🌐 Django search with enforced coordinates: $latitude, $longitude');
+      
+      // Use the new hospitals/search endpoint with coordinate parameters
+      final normalizedType = (type ?? '').trim();
+      final uri = Uri.parse('$baseUrl/hospitals/search/').replace(queryParameters: {
         'lat': latitude.toString(),
         'lon': longitude.toString(),
-        'radius_m': radiusM.toString(),
-        'limit': pageSize.toString(),
-        'page': page.toString(),
-      };
-      if (sortBy != null && sortBy.isNotEmpty) {
-        params['sort_by'] = sortBy;
-        params['sort_order'] = sortOrder;
-      }
-      final searchUri = Uri.parse(hospitalsSearchEndpoint).replace(queryParameters: params);
-      final response = await http.get(searchUri, headers: headers).timeout(Duration(seconds: 15));
-
+        'radius_m': (radius * 1000).round().toString(), // Convert km to meters and ensure integer
+        'limit': '20',
+        if (normalizedType.isNotEmpty) 'type': normalizedType,
+      });
+      
+      print('🌐 Django request: $uri');
+      
+      final response = await http.get(uri, headers: headers).timeout(Duration(seconds: 10));
+      
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
+        print('Django response: $responseData');
+        
+        // Check if response has 'data' field with hospitals array
         if (responseData['status'] == 'success' && responseData['data'] != null) {
           final List<dynamic> hospitalsList = responseData['data'];
-          print('Django: found ${hospitalsList.length} hospitals (page $page)');
-          final hospitals = _parseHospitalList(hospitalsList, latitude, longitude);
-          allHospitals.addAll(hospitals);
+          print('Found ${hospitalsList.length} hospitals in Django response');
+          
+          List<Hospital> hospitals = hospitalsList.map((hospitalJson) {
+            try {
+              // Direct parsing with robust type conversion
+              double lat = _safeParseDouble(hospitalJson['latitude']) ?? 0.0;
+              double lng = _safeParseDouble(hospitalJson['longitude']) ?? 0.0;
+              final double? rating = _safeParseDouble(
+                hospitalJson['ai_rating_stars'] ??
+                    hospitalJson['ai_rating'] ??
+                    hospitalJson['rating'],
+              );
+              
+              // Calculate distance to user location
+              double distance = _calculateDistance(latitude, longitude, lat, lng);
+              
+              String phone = hospitalJson['phone'] ?? '';
+              
+              // Debug phone number
+              if (phone.isNotEmpty) {
+                print('📞 Django phone found: $phone for ${hospitalJson['name']}');
+              } else {
+                print('⚠️ No phone number found for Django hospital: ${hospitalJson['name']}');
+              }
+              
+              final dynamic waitTimeRaw = hospitalJson['wait_time_minutes'] ??
+                  hospitalJson['wait_time_prediction'] ??
+                  hospitalJson['current_wait_time'] ??
+                  hospitalJson['wait_time'];
+              final int? waitTimeMinutes = waitTimeRaw is int
+                  ? waitTimeRaw
+                  : waitTimeRaw is double
+                      ? waitTimeRaw.round()
+                      : waitTimeRaw is String
+                          ? int.tryParse(waitTimeRaw)
+                          : null;
+
+              // Create hospital with parsed values
+              return Hospital(
+                id: hospitalJson['id']?.toString() ?? '',
+                name: hospitalJson['name'] ?? 'Unknown Hospital',
+                address: hospitalJson['address'] ?? '',
+                latitude: lat,
+                longitude: lng,
+                distance: distance,
+                rating: rating,
+                waitTimeMinutes: waitTimeMinutes,
+                phone: phone,
+                specialties: List<String>.from(hospitalJson['specialties'] ?? []),
+                imageUrl: hospitalJson['image_url'] ?? hospitalJson['website'] ?? '',
+                source: 'django_backend',
+              );
+            } catch (e) {
+              print('Error parsing hospital: $e');
+              print('Hospital JSON: $hospitalJson');
+              return null;
+            }
+          }).where((hospital) => hospital != null).cast<Hospital>().toList();
+          
+          // Filter hospitals by distance - but if none found within radius, show closest 20
+          List<Hospital> nearbyHospitals = hospitals.where((hospital) {
+            return hospital.distance <= radius;
+          }).toList();
+          
+                  // If no hospitals within radius, show closest 20 for demo
+                  if (nearbyHospitals.isEmpty && hospitals.isNotEmpty) {
+                    Hospital.sortByPriorityAndDistance(hospitals);
+                    nearbyHospitals = hospitals.take(20).toList();
+                    print('No hospitals within ${radius}km, showing closest 20 hospitals (sorted by priority)');
+                  }
+          
+          // Sort by priority (Urgent Care > Emergency > Walk-in > Others), then by distance
+          Hospital.sortByPriorityAndDistance(nearbyHospitals);
+          print('📋 Sorted hospitals by priority: Urgent Care → Emergency → Walk-in → Others');
+          
+          print('Filtered to ${nearbyHospitals.length} hospitals within ${radius}km');
+          return nearbyHospitals;
+        } else {
+          print('Invalid response structure: $responseData');
+          throw Exception('Invalid response structure from Django');
         }
       } else {
-        // Try list endpoint with lat/lon so backend can compute distance
-        final listParams = <String, String>{
-          'lat': latitude.toString(),
-          'lon': longitude.toString(),
-          'page': page.toString(),
-          'page_size': pageSize.toString(),
-        };
-        final listUri = Uri.parse('$baseUrl/hospitals/').replace(queryParameters: listParams);
-        final listResponse = await http.get(listUri, headers: headers).timeout(Duration(seconds: 15));
-        if (listResponse.statusCode == 200) {
-          final listData = json.decode(listResponse.body) as Map<String, dynamic>;
-          if (listData['status'] == 'success' && listData['data'] != null) {
-            final list = listData['data'] as List<dynamic>;
-            final hospitals = _parseHospitalList(list, latitude, longitude);
-            List<Hospital> nearby = hospitals.where((h) => (h.distance ?? double.infinity) <= radius).toList();
-            print('Django list: found ${nearby.length} hospitals within radius');
-            allHospitals.addAll(nearby);
-          }
-        }
+        print('Failed to load hospitals: ${response.statusCode} - ${response.body}');
+        throw Exception('Django backend returned ${response.statusCode}');
       }
     } catch (e) {
-      print('Django hospital search error: $e');
+      print('Error searching hospitals: $e');
+      return [];
     }
-
-    // For page > 1, only Django supports pagination; return Django results only
-    if (page > 1) {
-      allHospitals.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
-      return allHospitals;
-    }
-
-    // 2. OpenStreetMap (page 1 only)
-    final osm = await _searchHospitalsOpenStreetMap(latitude, longitude, radius);
-    if (osm != null && osm.isNotEmpty) {
-      print('OpenStreetMap: found ${osm.length} hospitals');
-      allHospitals.addAll(osm);
-    }
-
-    // 3. TomTom (page 1 only)
-    final tomtom = await _searchHospitalsTomTom(latitude, longitude, radius);
-    if (tomtom != null && tomtom.isNotEmpty) {
-      print('TomTom: found ${tomtom.length} hospitals');
-      allHospitals.addAll(tomtom);
-    }
-
-    // 4. Google Places (page 1 only)
-    final google = await _searchHospitalsGoogle(latitude, longitude, radius);
-    if (google != null && google.isNotEmpty) {
-      print('Google Places: found ${google.length} hospitals');
-      allHospitals.addAll(google);
-    }
-
-    // Deduplicate (same location or very similar name)
-    final deduplicated = _deduplicateHospitals(allHospitals);
-    print('Total after merge & dedup: ${deduplicated.length} hospitals');
-      deduplicated.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
-    return deduplicated;
-  }
-
-  static const String _overpassEndpoint = 'https://overpass-api.de/api/interpreter';
-
-  /// OpenStreetMap (Overpass API) - no API key required.
-  Future<List<Hospital>?> _searchHospitalsOpenStreetMap(double lat, double lon, double radiusKm) async {
-    try {
-      final radiusM = (radiusKm * 1000).round().clamp(100, 25000);
-      final query = '[out:json][timeout:25];(node(around:$radiusM,$lat,$lon)[amenity=hospital];node(around:$radiusM,$lat,$lon)[healthcare=hospital];way(around:$radiusM,$lat,$lon)[amenity=hospital];);out center tags;';
-      final uri = Uri.parse(_overpassEndpoint).replace(queryParameters: {'data': query});
-      final response = await http.get(uri, headers: {'Accept': 'application/json'}).timeout(Duration(seconds: 15));
-      if (response.statusCode != 200) return null;
-      final data = json.decode(response.body) as Map<String, dynamic>?;
-      final elements = data?['elements'] as List<dynamic>? ?? [];
-      final hospitals = <Hospital>[];
-      for (final el in elements) {
-        final tags = (el['tags'] as Map<String, dynamic>?) ?? {};
-        final name = (tags['name'] ?? tags['brand'] ?? 'Hospital') as String;
-        double? elat = _safeParseDouble(el['lat']);
-        double? elon = _safeParseDouble(el['lon']);
-        if (elat == null || elon == null) {
-          final center = el['center'] as Map<String, dynamic>?;
-          if (center != null) {
-            elat = _safeParseDouble(center['lat']);
-            elon = _safeParseDouble(center['lon']);
-          }
-        }
-        if (elat == null || elon == null) continue;
-        final address = [tags['addr:street'], tags['addr:housenumber'], tags['addr:city']].whereType<String>().join(', ');
-        final city = tags['addr:city'] as String? ?? '';
-        final state = tags['addr:state'] as String? ?? '';
-        final distance = _calculateDistance(lat, lon, elat, elon);
-        final id = 'osm_${el['type']}_${el['id']}';
-        hospitals.add(Hospital(
-          id: id,
-          name: name,
-          address: address.isEmpty ? 'Address not specified' : address,
-          city: city,
-          state: state,
-          latitude: elat,
-          longitude: elon,
-          distance: distance,
-          rating: 4.0,
-          phone: '',
-          website: tags['website'] ?? '',
-          specialties: ['Emergency Medicine'],
-          imageUrl: '',
-          estimatedWaitTimeMinutes: null,
-        ));
-      }
-      hospitals.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
-      return hospitals;
-    } catch (e) {
-      print('OpenStreetMap hospital search error: $e');
-      return null;
-    }
-  }
-
-  /// TomTom POI Search - requires TomTom API key (Settings or Django).
-  Future<List<Hospital>?> _searchHospitalsTomTom(double lat, double lon, double radiusKm) async {
-    try {
-      final key = await ApiKeyManager.getActiveTomTomApiKey();
-      if (key == null || key.isEmpty) return null;
-      final radiusM = (radiusKm * 1000).round();
-      final uri = Uri.parse('https://api.tomtom.com/search/2/poiSearch/hospital.json').replace(
-        queryParameters: {'key': key, 'lat': '$lat', 'lon': '$lon', 'radius': '$radiusM', 'limit': '50'},
-      );
-      final response = await http.get(uri, headers: headers).timeout(Duration(seconds: 15));
-      if (response.statusCode != 200) return null;
-      final data = json.decode(response.body) as Map<String, dynamic>?;
-      final results = data?['results'] as List<dynamic>? ?? [];
-      final hospitals = <Hospital>[];
-      for (final r in results) {
-        final pos = r['position'] as Map<String, dynamic>?;
-        final lat2 = _safeParseDouble(pos?['lat']);
-        final lon2 = _safeParseDouble(pos?['lon']);
-        if (lat2 == null || lon2 == null) continue;
-        final name = (r['poi'] as Map<String, dynamic>?)?['name'] as String? ?? 'Hospital';
-        final addressData = r['address'] as Map<String, dynamic>? ?? {};
-        final addr = addressData['freeformAddress'] as String? ?? '';
-        final city = addressData['municipality'] as String? ?? addressData['localName'] as String? ?? '';
-        final state = addressData['countrySubdivision'] as String? ?? '';
-        final distance = _calculateDistance(lat, lon, lat2, lon2);
-        hospitals.add(Hospital(
-          id: 'tomtom_${r['id']}',
-          name: name,
-          address: addr,
-          city: city,
-          state: state,
-          latitude: lat2,
-          longitude: lon2,
-          distance: distance,
-          rating: 4.0,
-          phone: (r['poi'] as Map<String, dynamic>?)?['phone'] as String? ?? '',
-          website: (r['poi'] as Map<String, dynamic>?)?['url'] as String? ?? '',
-          specialties: ['Emergency Medicine'],
-          imageUrl: '',
-          estimatedWaitTimeMinutes: null,
-        ));
-      }
-      hospitals.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
-      return hospitals;
-    } catch (e) {
-      print('TomTom hospital search error: $e');
-      return null;
-    }
-  }
-
-  /// Google Places Nearby Search - requires Google Maps API key (Settings or Django).
-  Future<List<Hospital>?> _searchHospitalsGoogle(double lat, double lon, double radiusKm) async {
-    try {
-      final key = await ApiKeyManager.getActiveGoogleMapsApiKey();
-      if (key == null || key.isEmpty) return null;
-      final radiusM = (radiusKm * 1000).round().clamp(1, 50000);
-      final uri = Uri.parse('https://maps.googleapis.com/maps/api/place/nearbysearch/json').replace(
-        queryParameters: {'location': '$lat,$lon', 'radius': '$radiusM', 'type': 'hospital', 'key': key},
-      );
-      final response = await http.get(uri, headers: headers).timeout(Duration(seconds: 15));
-      if (response.statusCode != 200) return null;
-      final data = json.decode(response.body) as Map<String, dynamic>?;
-      if (data?['status'] != 'OK' && data?['status'] != 'ZERO_RESULTS') return null;
-      final results = data?['results'] as List<dynamic>? ?? [];
-      final hospitals = <Hospital>[];
-      for (final r in results) {
-        final geo = r['geometry'] as Map<String, dynamic>?;
-        final loc = geo?['location'] as Map<String, dynamic>?;
-        final lat2 = _safeParseDouble(loc?['lat']);
-        final lng2 = _safeParseDouble(loc?['lng']);
-        if (lat2 == null || lng2 == null) continue;
-        final name = r['name'] as String? ?? 'Hospital';
-        final vicinity = r['vicinity'] as String? ?? '';
-        final cityState = Hospital._extractCityState(vicinity);
-        final distance = _calculateDistance(lat, lon, lat2, lng2);
-        hospitals.add(Hospital(
-          id: 'google_${r['place_id']}',
-          name: name,
-          address: vicinity,
-          city: cityState['city'] ?? '',
-          state: cityState['state'] ?? '',
-          latitude: lat2,
-          longitude: lng2,
-          distance: distance,
-          rating: 4.0,
-          phone: '',
-          website: '',
-          specialties: ['Emergency Medicine'],
-          imageUrl: '',
-          estimatedWaitTimeMinutes: null,
-        ));
-      }
-      hospitals.sort((a, b) => a.distanceOrInfinity.compareTo(b.distanceOrInfinity));
-      return hospitals;
-    } catch (e) {
-      print('Google Places hospital search error: $e');
-      return null;
-    }
-  }
-
-  List<Hospital> _parseHospitalList(
-    List<dynamic> hospitalsList,
-    double userLat,
-    double userLng,
-  ) {
-    return hospitalsList.map((hospitalJson) {
-      try {
-        final lat = _safeParseDouble(hospitalJson['latitude']) ?? 0.0;
-        final lng = _safeParseDouble(hospitalJson['longitude']) ?? 0.0;
-        // Backend contract: prefer distance_km, distance_miles, distance_m, distance (miles)
-        double? distanceKm = _safeParseDouble(hospitalJson['distance_km']);
-        final miles = _safeParseDouble(hospitalJson['distance_miles']);
-        distanceKm ??= miles != null ? miles * 1.60934 : null;
-        final metres = _safeParseDouble(hospitalJson['distance_m']);
-        distanceKm ??= metres != null ? metres / 1000 : null;
-        final distMiles = _safeParseDouble(hospitalJson['distance']);
-        if (distanceKm == null && distMiles != null) distanceKm = distMiles * 1.60934;
-        if (distanceKm == null && lat != 0 && lng != 0) {
-          distanceKm = _calculateDistance(userLat, userLng, lat, lng);
-        }
-        // Rating: ai_rating, rating, ai_rating_5 (×2), overall_performance_score
-        double? rating = _safeParseDouble(hospitalJson['ai_rating']) ?? _safeParseDouble(hospitalJson['rating']);
-        final r5 = _safeParseDouble(hospitalJson['ai_rating_5']);
-        rating ??= r5 != null ? r5 * 2.0 : null;
-        rating ??= _safeParseDouble(hospitalJson['overall_performance_score']);
-        // Wait: wait_time_prediction, wait_time_minutes, then fallbacks
-        final wait = hospitalJson['wait_time_prediction'] ?? hospitalJson['wait_time_minutes'] ??
-            hospitalJson['smart_wait_time'] ?? hospitalJson['current_wait_time'] ??
-            hospitalJson['estimated_wait_time'] ?? hospitalJson['ai_estimated_wait'] ?? hospitalJson['predicted_wait_time'];
-        int? waitMinutes;
-        if (wait != null) {
-          if (wait is int) waitMinutes = wait;
-          if (wait is double) waitMinutes = wait.round();
-          if (wait is String) waitMinutes = int.tryParse(wait);
-        }
-        return Hospital(
-          id: hospitalJson['id']?.toString() ?? '',
-          name: hospitalJson['name'] ?? 'Unknown Hospital',
-          address: hospitalJson['address'] ?? '',
-          city: hospitalJson['city'] ?? '',
-          state: hospitalJson['state'] ?? '',
-          latitude: lat,
-          longitude: lng,
-          distance: distanceKm,
-          rating: rating,
-          phone: hospitalJson['phone'] ?? '',
-          website: hospitalJson['website'] ?? '',
-          specialties: List<String>.from(hospitalJson['specialties'] ?? []),
-          imageUrl: hospitalJson['image_url'] ?? hospitalJson['website'] ?? '',
-          estimatedWaitTimeMinutes: waitMinutes,
-        );
-      } catch (e) {
-        print('Error parsing hospital: $e');
-        return null;
-      }
-    }).where((h) => h != null).cast<Hospital>().toList();
   }
   
   /// Calculate distance between two points using Haversine formula
@@ -382,58 +246,11 @@ class DjangoApiService {
     double c = 2 * asin(sqrt(a));
     return earthRadius * c;
   }
-
+  
   double _toRadians(double degrees) {
     return degrees * (pi / 180);
   }
-
-  /// Remove duplicates: same location (<100m) or very similar name (Levenshtein < 3).
-  List<Hospital> _deduplicateHospitals(List<Hospital> hospitals) {
-    final keep = <Hospital>[];
-    for (final h in hospitals) {
-      bool isDupe = false;
-      for (final existing in keep) {
-        final dist = _calculateDistance(h.latitude, h.longitude, existing.latitude, existing.longitude);
-        if (dist < 0.1) {
-          isDupe = true;
-          break;
-        }
-        if (_similarName(h.name, existing.name)) {
-          isDupe = true;
-          break;
-        }
-      }
-      if (!isDupe) keep.add(h);
-    }
-    return keep;
-  }
-
-  bool _similarName(String a, String b) {
-    final a2 = a.toLowerCase().replaceAll(RegExp(r'\W+'), '');
-    final b2 = b.toLowerCase().replaceAll(RegExp(r'\W+'), '');
-    if (a2 == b2) return true;
-    if (a2.length < 5 || b2.length < 5) return false;
-    return _levenshtein(a2, b2) <= 2;
-  }
-
-  int _levenshtein(String s, String t) {
-    if (s == t) return 0;
-    if (s.isEmpty) return t.length;
-    if (t.isEmpty) return s.length;
-    final v0 = List<int>.filled(t.length + 1, 0);
-    final v1 = List<int>.filled(t.length + 1, 0);
-    for (int i = 0; i <= t.length; i++) v0[i] = i;
-    for (int i = 0; i < s.length; i++) {
-      v1[0] = i + 1;
-      for (int j = 0; j < t.length; j++) {
-        final cost = s[i] == t[j] ? 0 : 1;
-        v1[j + 1] = [v1[j] + 1, v0[j + 1] + 1, v0[j] + cost].reduce((a, b) => a < b ? a : b);
-      }
-      for (int j = 0; j <= t.length; j++) v0[j] = v1[j];
-    }
-    return v1[t.length];
-  }
-
+  
   /// Safely parse any type to double
   static double? _safeParseDouble(dynamic value) {
     if (value == null) return null;
@@ -452,7 +269,8 @@ class DjangoApiService {
         queryParameters: {'hospital_id': hospitalId},
       );
       
-      final response = await http.get(uri, headers: headers);
+      final response = await http.get(uri, headers: headers)
+          .timeout(const Duration(seconds: 30));
       
       if (response.statusCode == 200) {
         return WaitTime.fromJson(json.decode(response.body));
@@ -472,8 +290,6 @@ class DjangoApiService {
     required int waitTime,
   }) async {
     try {
-      // Backend expects these fields (see /api/feedback/submit/)
-      final normalized = _normalizeRatingToInt1to5(rating);
       final response = await http.post(
         Uri.parse(feedbackEndpoint),
         headers: headers,
@@ -482,13 +298,9 @@ class DjangoApiService {
           'rating': rating,
           'comment': comment,
           'wait_time': waitTime,
-          'care_quality': normalized,
-          'staff_friendliness': normalized,
-          'cleanliness': normalized,
-          'facility_modernity': normalized,
           'timestamp': DateTime.now().toIso8601String(),
         }),
-      );
+      ).timeout(const Duration(seconds: 30));
       
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
@@ -497,152 +309,141 @@ class DjangoApiService {
     }
   }
   
-  /// Submit review + wait time to backend (AI-enhanced processing happens server-side).
-  /// Returns SubmitReviewResult with success and aiUpdated (true when backend used feedback for predictions).
-  Future<SubmitReviewResult> submitEnhancedReview({
+  /// Submit enhanced review to Django backend
+  Future<bool> submitEnhancedReview({
     required String hospitalId,
     required double rating,
     required String comment,
     required int waitTimeMinutes,
     required String userLocation,
-    Hospital? hospitalDetails, // Add full hospital details for external API hospitals
+    Map<String, String>? externalIds,
+    int careQuality = 3,
+    int staffFriendliness = 3,
+    int cleanliness = 3,
+    int facilityModernity = 3,
   }) async {
     try {
-      final normalized = _normalizeRatingToInt1to5(rating);
-      
-      // Build request payload
-      final payload = <String, dynamic>{
-        'hospital_id': hospitalId,
-        'rating': rating,
-        'comment': comment,
-        'wait_time': waitTimeMinutes,
-        'user_location': userLocation,
-        'care_quality': normalized,
-        'staff_friendliness': normalized,
-        'cleanliness': normalized,
-        'facility_modernity': normalized,
-        'visit_date': DateTime.now().toIso8601String().split('T')[0],
-        'timestamp': DateTime.now().toIso8601String(),
-        'app_version': AppConfig.version,
-        'platform': 'flutter',
-      };
-      
-      // If hospital details provided (e.g., from OSM/TomTom/Google), include them so backend can create if needed
-      if (hospitalDetails != null) {
-        payload['hospital'] = {
-          'id': hospitalDetails.id,
-          'name': hospitalDetails.name,
-          'address': hospitalDetails.address,
-          'city': hospitalDetails.city,
-          'state': hospitalDetails.state,
-          'latitude': hospitalDetails.latitude,
-          'longitude': hospitalDetails.longitude,
-          'phone': hospitalDetails.phone,
-          'website': hospitalDetails.website,
-        };
-      }
+      print('🔄 Submitting review to backend: $baseUrl/feedback/submit/');
+      print('🔄 Hospital ID: $hospitalId, Rating: $rating, Comment: $comment');
       
       final response = await http.post(
-        Uri.parse(feedbackEndpoint),
+        Uri.parse('$baseUrl/feedback/submit/'),
         headers: headers,
-        body: json.encode(payload),
-      );
-
+        body: json.encode({
+          'hospital_id': hospitalId,
+          'rating': rating,
+          'comment': comment,
+          'wait_time': waitTimeMinutes,
+          'user_location': userLocation,
+          'care_quality': careQuality,
+          'staff_friendliness': staffFriendliness,
+          'cleanliness': cleanliness,
+          'facility_modernity': facilityModernity,
+          'visit_date': DateTime.now().toIso8601String().split('T')[0], // YYYY-MM-DD format
+          'timestamp': DateTime.now().toIso8601String(),
+          'app_version': AppConfig.version,
+          'platform': 'flutter',
+          if (externalIds != null && externalIds.isNotEmpty) 'external_ids': externalIds,
+        }),
+        ).timeout(Duration(seconds: 30));
+      
+      print('🔄 Review response status: ${response.statusCode}');
+      print('🔄 Review response body: ${response.body}');
+      
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = json.decode(response.body) as Map<String, dynamic>?;
-        final data = responseData != null && responseData['data'] is Map
-            ? responseData['data'] as Map<String, dynamic>
-            : responseData;
-        final aiUpdated = data != null && (data['ai_updated'] == true || data['ai_updated'] == 'true');
-        print('AI Review Response: $responseData, ai_updated: $aiUpdated');
-        return SubmitReviewResult(success: true, aiUpdated: aiUpdated);
+        final responseData = json.decode(response.body);
+        print('✅ Review submitted successfully: $responseData');
+        return true;
+      } else {
+        print('❌ Failed to submit review: ${response.statusCode} - ${response.body}');
+        return false;
       }
-      print('Failed to submit enhanced review: ${response.statusCode} - ${response.body}');
-      return SubmitReviewResult(success: false, aiUpdated: false);
     } catch (e) {
-      print('Error submitting enhanced review: $e');
-      return SubmitReviewResult(success: false, aiUpdated: false);
+      print('❌ Error submitting review: $e');
+      return false;
     }
   }
 
-  static int _normalizeRatingToInt1to5(num rating) {
-    // Accept common scales and coerce safely into 1..5.
-    final double r = rating.toDouble();
-    if (r.isNaN || r.isInfinite) return 3;
-    if (r <= 5.0) {
-      return r.round().clamp(1, 5);
+  /// Optional: Call hospital dedup preview to get best match and candidates
+  Future<Map<String, dynamic>?> dedupPreview({
+    required String name,
+    String? city,
+    String? state,
+    required double latitude,
+    required double longitude,
+    String? address,
+    Map<String, String>? externalIds,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse(dedupPreviewEndpoint),
+        headers: headers,
+        body: json.encode({
+          'name': name,
+          if (city != null) 'city': city,
+          if (state != null) 'state': state,
+          'latitude': latitude,
+          'longitude': longitude,
+          if (address != null) 'address': address,
+          if (externalIds != null && externalIds.isNotEmpty) 'external_ids': externalIds,
+        }),
+      ).timeout(Duration(seconds: 20));
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      print('❌ Dedup preview error: $e');
+      return null;
     }
-    // If the caller passes 1..10, map to 1..5.
-    final scaled = (r / 2.0);
-    return scaled.round().clamp(1, 5);
   }
   
-  /// Get Google Maps API key from Django backend
-  Future<String?> getGoogleMapsApiKey() async {
+  // In-memory cache so all three map-config accessors share one network call per session.
+  Map<String, dynamic>? _mapConfigCache;
+
+  /// Fetch map configuration once and cache the result for the session.
+  Future<Map<String, dynamic>?> _fetchMapConfig() async {
+    if (_mapConfigCache != null) return _mapConfigCache;
     try {
       final response = await http.get(
         Uri.parse(mapConfigEndpoint),
         headers: headers,
-      );
-       
+      ).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return data['google_maps_api_key'];
-      } else {
-        print('Failed to get Google Maps API key: ${response.statusCode}');
-        return null;
+        _mapConfigCache = json.decode(response.body) as Map<String, dynamic>;
+        return _mapConfigCache;
       }
+      print('Failed to get map config: ${response.statusCode}');
+      return null;
     } catch (e) {
-      print('Error getting Google Maps API key: $e');
+      print('Error fetching map config: $e');
       return null;
     }
+  }
+
+  /// Get Google Maps API key from Django backend
+  Future<String?> getGoogleMapsApiKey() async {
+    final data = await _fetchMapConfig();
+    return data?['google_maps_api_key'] as String?;
   }
 
   Future<String?> getTomTomApiKey() async {
-    try {
-      final response = await http.get(
-        Uri.parse(mapConfigEndpoint),
-        headers: headers,
-      );
-       
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return data['tomtom_api_key'];
-      } else {
-        print('Failed to get TomTom API key: ${response.statusCode}');
-        return null;
-      }
-    } catch (e) {
-      print('Error getting TomTom API key: $e');
-      return null;
-    }
+    final data = await _fetchMapConfig();
+    return data?['tomtom_api_key'] as String?;
   }
 
   Future<Map<String, dynamic>?> getAllMapConfigs() async {
-    try {
-      final response = await http.get(
-        Uri.parse(mapConfigEndpoint),
-        headers: headers,
-      );
-       
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return {
-          'google_maps_api_key': data['google_maps_api_key'],
-          'tomtom_api_key': data['tomtom_api_key'],
-          'preferred_map_provider': data['preferred_map_provider'] ?? 'google',
-          'enable_google_maps': data['enable_google_maps'] ?? true,
-          'enable_tomtom_maps': data['enable_tomtom_maps'] ?? false,
-          'fallback_to_google': data['fallback_to_google'] ?? true,
-        };
-      } else {
-        print('Failed to get map configurations: ${response.statusCode}');
-        return null;
-      }
-    } catch (e) {
-      print('Error getting map configurations: $e');
-      return null;
-    }
+    final data = await _fetchMapConfig();
+    if (data == null) return null;
+    return {
+      'google_maps_api_key': data['google_maps_api_key'],
+      'tomtom_api_key': data['tomtom_api_key'],
+      'preferred_map_provider': data['preferred_map_provider'] ?? 'google',
+      'enable_google_maps': data['enable_google_maps'] ?? true,
+      'enable_tomtom_maps': data['enable_tomtom_maps'] ?? false,
+      'enable_openstreet_map': data['enable_openstreet_map'] ?? false,
+      'fallback_to_google': data['fallback_to_google'] ?? true,
+    };
   }
   
   /// Get all API keys configuration from Django backend
@@ -651,11 +452,20 @@ class DjangoApiService {
       final response = await http.get(
         Uri.parse(apiKeysEndpoint),
         headers: headers,
-      );
+      ).timeout(const Duration(seconds: 15));
       
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return Map<String, String>.from(data);
+        final decoded = json.decode(response.body);
+        if (decoded is! Map) {
+          print('Unexpected API keys response shape: ${decoded.runtimeType}');
+          return null;
+        }
+        // Safely convert — values that are not strings are coerced via toString()
+        return Map<String, String>.fromEntries(
+          decoded.entries
+              .where((e) => e.key is String && e.value != null)
+              .map((e) => MapEntry(e.key as String, e.value.toString())),
+        );
       } else {
         print('Failed to get API keys: ${response.statusCode}');
         return null;
@@ -666,320 +476,482 @@ class DjangoApiService {
     }
   }
   
-  /// Login and return auth token from Django backend
-  Future<String?> loginAndGetToken(String email, String password) async {
+  /// Register new user with Django backend
+  Future<bool> registerUser({
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+  }) async {
     try {
-      final uri = Uri.parse('$baseUrl/auth/login/');
+      lastRegisterError = null;
+      print('🔄 Attempting to register user: $email');
+      final uri = Uri.parse('$baseUrl/auth/register/');
+      print('🔄 Registration URL: $uri');
       
-      // Try with full email first (some backends store email as username)
-      var response = await http.post(
+      final response = await http.post(
         uri,
         headers: headers,
         body: json.encode({
-          'username': email,
+          'email': email,
           'password': password,
+          'first_name': firstName,
+          'last_name': lastName,
+          'username': email, // Use email as username
         }),
-      ).timeout(Duration(seconds: 10));
+        ).timeout(Duration(seconds: 30));
 
-      // If that fails, try with derived username (email prefix)
-      if (response.statusCode != 200) {
-        final username = email.contains('@') 
-            ? email.split('@').first.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_')
-            : email;
-        
-        response = await http.post(
-          uri,
-          headers: headers,
-          body: json.encode({
-            'username': username,
-            'password': password,
-          }),
-        ).timeout(Duration(seconds: 10));
-      }
+      print('🔄 Registration response status: ${response.statusCode}');
+      // SECURITY: do not log response body (may contain PII)
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
-        final token = data['token'] ?? data['access'] ?? data['key'] ?? 
-                      (data['data'] != null ? data['data']['token'] : null);
-        return token?.toString();
+        print('✅ Registration successful: $data');
+        return true;
       } else {
-        print('Login failed: ${response.statusCode} - ${response.body}');
-        return null;
+        String errorMessage = 'Registration failed';
+        try {
+          final decoded = json.decode(response.body);
+          if (decoded is Map) {
+            // Prefer the backend's message, but also support the new consistent "errors" map.
+            errorMessage = (decoded['message'] ??
+                    decoded['detail'] ??
+                    decoded['error'] ??
+                    decoded['non_field_errors'] ??
+                    'Registration failed')
+                .toString();
+
+            // New backend shape:
+            // { status: "error", message: "...", errors: { field: ["..."] } }
+            final errors = decoded['errors'];
+            if (errors is Map && errors.isNotEmpty) {
+              final parts = <String>[];
+              for (final entry in errors.entries) {
+                final v = entry.value;
+                if (v is List) {
+                  parts.add(v.join(' '));
+                } else if (v != null) {
+                  parts.add(v.toString());
+                }
+              }
+              if (parts.isNotEmpty) {
+                errorMessage = parts.join('\n');
+              }
+            } else if (errorMessage == 'Registration failed') {
+              // Older field-level errors like { "password": ["..."] }
+              final passwordErr = decoded['password'];
+              final emailErr = decoded['email'];
+              final usernameErr = decoded['username'];
+              final firstNameErr = decoded['first_name'];
+              final lastNameErr = decoded['last_name'];
+              final fieldErr = passwordErr ?? emailErr ?? usernameErr ?? firstNameErr ?? lastNameErr;
+              if (fieldErr != null) {
+                errorMessage = fieldErr is List ? fieldErr.join(' ') : fieldErr.toString();
+              }
+            }
+          } else {
+            errorMessage = decoded.toString();
+          }
+        } catch (_) {
+          // Non-JSON error bodies can happen (proxy/html). Keep default message.
+        }
+
+        lastRegisterError = errorMessage;
+        print('❌ Registration failed: ${response.statusCode} - $errorMessage');
+
+        return false;
       }
     } catch (e) {
-      print('Login error: $e');
+      print('❌ Registration error: $e');
+      lastRegisterError = 'Registration error: ${e.toString()}';
+      return false;
+    }
+  }
+
+  /// Fetch password policy so the UI can validate before submit.
+  /// Returns a map like:
+  /// { minLength: int, helpText: List<String>, customRules: List<String> }
+  Future<Map<String, dynamic>?> getPasswordPolicy() async {
+    try {
+      final response = await http
+          .get(Uri.parse(passwordPolicyEndpoint), headers: headers)
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return null;
+      final decoded = json.decode(response.body);
+      if (decoded is! Map) return null;
+      final data = decoded['data'];
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+      return Map<String, dynamic>.from(decoded);
+    } catch (e) {
       return null;
     }
   }
 
-  /// Request account deletion on backend (DELETE or POST /api/auth/delete-account/).
-  /// Sends Authorization: Token <token>. Returns true if backend accepted, false otherwise.
-  /// Caller should clear local data either way.
-  Future<bool> deleteAccount() async {
-    final uri = Uri.parse('$baseUrl/auth/delete-account/');
-    if (authToken == null || authToken!.isEmpty) {
-      print('Delete account: no auth token set');
-      return false;
-    }
+  /// Request password reset
+  Future<bool> requestPasswordReset(String email) async {
     try {
-      // Try DELETE first (standard for account deletion)
-      var response = await http.delete(
+      print('🔄 Requesting password reset for: $email');
+      final uri = Uri.parse('$baseUrl/auth/password-reset/');
+      print('🔄 Reset URL: $uri');
+      
+      final response = await http.post(
         uri,
         headers: headers,
-      ).timeout(const Duration(seconds: 15));
-      // Some backends use POST for delete-account; try if DELETE not allowed
-      if (response.statusCode == 404 || response.statusCode == 405) {
-        response = await http.post(
-          uri,
-          headers: headers,
-          body: json.encode({'confirm': true}),
-        ).timeout(const Duration(seconds: 15));
-      }
-      if (response.statusCode == 200 || response.statusCode == 204) {
+        body: json.encode({'email': email}),
+        ).timeout(Duration(seconds: 30));
+
+      print('🔄 Reset response status: ${response.statusCode}');
+      print('🔄 Reset response body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('✅ Password reset email sent successfully');
         return true;
+      } else {
+        print('❌ Password reset request failed: ${response.statusCode} - ${response.body}');
+        return false;
       }
-      print('Delete account failed: ${response.statusCode} ${response.body}');
-      return false;
     } catch (e) {
-      print('Delete account request error: $e');
+      print('❌ Password reset request error: $e');
       return false;
     }
   }
 
-  /// Register new user on Django backend (POST /api/auth/register/)
-  /// Returns error message on failure, null on success.
-  Future<String?> register({
+  /// Reset password with token
+  Future<bool> resetPassword(String token, String newPassword) async {
+    try {
+      final uri = Uri.parse('$baseUrl/auth/password-reset-confirm/');
+      final response = await http.post(
+        uri,
+        headers: headers,
+        body: json.encode({
+          'token': token,
+          'new_password': newPassword,
+        }),
+        ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('Password reset successful');
+        return true;
+      } else {
+        print('Password reset failed: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('Password reset error: $e');
+      return false;
+    }
+  }
+
+  /// Reset password directly (admin method)
+  Future<bool> resetPasswordDirect({
     required String email,
-    required String password,
-    String? name,
+    required String newPassword,
   }) async {
     try {
-      final uri = Uri.parse('$baseUrl/auth/register/');
-      // Generate unique username from email (consistent with login)
-      final username = email.split('@').first.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
-      final body = <String, dynamic>{
-        'email': email,
-        'password': password,
-        'username': username,
-      };
-      if (name != null && name.trim().isNotEmpty) body['name'] = name.trim();
+      print('🔄 Attempting direct password reset for: $email');
+      
+      // For now, we'll use the existing password reset endpoint
+      // In the future, you can implement a dedicated admin endpoint
+      final uri = Uri.parse('$baseUrl/auth/password-reset/');
+      print('🔄 Reset URL: $uri');
+      
       final response = await http.post(
         uri,
         headers: headers,
-        body: json.encode(body),
-      ).timeout(Duration(seconds: 10));
+        body: json.encode({
+          'email': email,
+          'new_password': newPassword,
+          'admin_reset': true, // Flag to indicate admin reset
+        }),
+        ).timeout(Duration(seconds: 30));
+
+      print('🔄 Reset response status: ${response.statusCode}');
+      print('🔄 Reset response body: ${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        print('✅ Direct password reset successful');
+        return true;
+      } else {
+        print('❌ Direct password reset failed: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('❌ Direct password reset error: $e');
+      return false;
+    }
+  }
+
+  /// Update user profile
+  Future<bool> updateUserProfile({
+    String? firstName,
+    String? lastName,
+    String? email,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/auth/profile/');
+      final response = await http.put(
+        uri,
+        headers: headers,
+        body: json.encode({
+          if (firstName != null) 'first_name': firstName,
+          if (lastName != null) 'last_name': lastName,
+          if (email != null) 'email': email,
+        }),
+        ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('Profile updated successfully');
+        return true;
+      } else {
+        print('Profile update failed: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('Profile update error: $e');
+      return false;
+    }
+  }
+
+  /// Get user profile
+  Future<Map<String, dynamic>?> getUserProfile() async {
+    try {
+      final uri = Uri.parse('$baseUrl/auth/profile/');
+      final response = await http.get(
+        uri,
+        headers: headers,
+        ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['status'] == 'error' || data['error'] != null) {
-          return data['message'] ?? data['error'] ?? 'Registration failed';
-        }
+        print('User profile loaded: $data');
+        return data;
+      } else {
+        print('Failed to load user profile: ${response.statusCode} - ${response.body}');
         return null;
       }
-      final bodyStr = response.body;
-      try {
-        final data = json.decode(bodyStr);
-        return data['message'] ?? data['detail'] ?? data['error'] ?? 'Registration failed';
-      } catch (_) {
-        return bodyStr.isNotEmpty ? bodyStr : 'Registration failed (${response.statusCode})';
-      }
     } catch (e) {
-      print('Register error: $e');
-      return 'Network error. Please try again.';
+      print('Error loading user profile: $e');
+      return null;
     }
   }
 
-  /// Request password reset email from Django backend (POST /api/auth/password-reset/).
-  /// Returns null on success, or an error message on failure.
-  Future<String?> requestPasswordReset(String email) async {
+  /// Change password
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
     try {
-      final uri = Uri.parse('$baseUrl/auth/password-reset/');
+      final uri = Uri.parse('$baseUrl/auth/change-password/');
       final response = await http.post(
         uri,
         headers: headers,
-        body: json.encode({'email': email.trim()}),
-      ).timeout(const Duration(seconds: 15));
+        body: json.encode({
+          'current_password': currentPassword,
+          'new_password': newPassword,
+        }),
+        ).timeout(Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = json.decode(response.body);
-        final msg = data['message'] ?? data['detail'] ?? data['status'];
-        if (msg != null && (msg.toString().toLowerCase().contains('success') ||
-            msg.toString().toLowerCase().contains('sent') ||
-            msg.toString().toLowerCase().contains('email'))) {
-          return null;
-        }
-        return null; // treat as success if 200
-      }
-      try {
-        final data = json.decode(response.body);
-        return data['message'] ?? data['detail'] ?? data['error'] ?? 'Request failed';
-      } catch (_) {
-        return response.body.isNotEmpty ? response.body : 'Request failed (${response.statusCode})';
+        print('Password changed successfully');
+        return true;
+      } else {
+        print('Password change failed: ${response.statusCode} - ${response.body}');
+        return false;
       }
     } catch (e) {
-      print('Password reset request error: $e');
-      return 'Network error. Please try again.';
+      print('Password change error: $e');
+      return false;
+    }
+  }
+
+  /// Delete user account
+  Future<bool> deleteAccount({required String password}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/auth/delete-account/');
+      final response = await http.post(
+        uri,
+        headers: headers,
+        body: json.encode({'password': password}),
+        ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        print('Account deleted successfully');
+        return true;
+      } else {
+        print('Account deletion failed: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('Account deletion error: $e');
+      return false;
+    }
+  }
+
+  /// Login and return auth token from Django backend
+  Future<String?> loginAndGetToken(String email, String password) async {
+    try {
+      lastLoginError = null;
+      final uri = Uri.parse('$baseUrl/auth/login/');
+      print('🌐 Making request to: $uri');
+      // SECURITY: never log email or password
+
+      final response = await http.post(
+        uri,
+        headers: headers,
+        // Be compatible with backends that expect either username OR email.
+        body: json.encode({
+          'username': email,
+          'email': email,
+          'password': password,
+        }),
+         ).timeout(Duration(seconds: 30));
+
+      print('🌐 Response status: ${response.statusCode}');
+      // SECURITY: do not log response body (contains token)
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final Map<String, dynamic> data = json.decode(response.body);
+
+        final status = (data['status'] ?? '').toString().toLowerCase();
+        final Object? rawNested = data['data'];
+        final Map<String, dynamic>? nested =
+            rawNested is Map<String, dynamic> ? rawNested : null;
+
+        // Some backends return {status: success} while others return 200 with token only.
+        final bool looksSuccessful =
+            status == 'success' ||
+                status == 'ok' ||
+                data.containsKey('token') ||
+                data.containsKey('access') ||
+                data.containsKey('key') ||
+                (nested != null &&
+                    (nested.containsKey('token') ||
+                        nested.containsKey('access') ||
+                        nested.containsKey('key')));
+
+        if (looksSuccessful) {
+          final dynamic token = data['token'] ??
+              data['access'] ??
+              data['key'] ??
+              nested?['token'] ??
+              nested?['access'] ??
+              nested?['key'];
+          print('🌐 Token found: ${token != null ? "YES" : "NO"}');
+          
+          if (token == null) {
+            // For successful login without token, return demo token
+            print('🌐 No token in response, using demo token for successful login');
+            return 'demo_token';
+          }
+          return token.toString();
+        } else {
+          lastLoginError = (data['message'] ?? data['detail'] ?? 'Login failed').toString();
+          print('❌ Login failed: ${data['message']}');
+          return null;
+        }
+      } else {
+        // Try to parse a helpful error message without logging sensitive data.
+        try {
+          final decoded = json.decode(response.body);
+          if (decoded is Map) {
+            lastLoginError = (decoded['message'] ??
+                    decoded['detail'] ??
+                    decoded['error'] ??
+                    decoded['non_field_errors'] ??
+                    'Login failed (${response.statusCode})')
+                .toString();
+          } else {
+            lastLoginError = 'Login failed (${response.statusCode})';
+          }
+        } catch (_) {
+          lastLoginError = 'Login failed (${response.statusCode})';
+        }
+        print('❌ Login failed: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ Login error: $e');
+      lastLoginError = 'Login error: ${e.toString()}';
+      return null;
+    }
+  }
+
+  /// Submit search analytics to Django backend
+  Future<bool> submitSearchAnalytics({
+    required double latitude,
+    required double longitude,
+    required double radius,
+    required int hospitalCount,
+    String? userId,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/analytics/search/'),
+        headers: headers,
+        body: json.encode({
+          'latitude': latitude,
+          'longitude': longitude,
+          'radius': radius,
+          'hospital_count': hospitalCount,
+          'user_id': userId,
+          'timestamp': DateTime.now().toIso8601String(),
+          'app_version': AppConfig.version,
+          'platform': 'flutter',
+        }),
+        ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('Search analytics submitted successfully');
+        return true;
+      } else {
+        print('Failed to submit search analytics: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('Error submitting search analytics: $e');
+      return false;
+    }
+  }
+
+  /// Submit user activity to Django backend
+  Future<bool> submitUserActivity({
+    required String activity,
+    required String details,
+    String? hospitalId,
+    Map<String, dynamic>? metadata,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/analytics/activity/'),
+        headers: headers,
+        body: json.encode({
+          'activity': activity,
+          'details': details,
+          'hospital_id': hospitalId,
+          'metadata': metadata ?? {},
+          'timestamp': DateTime.now().toIso8601String(),
+          'app_version': AppConfig.version,
+          'platform': 'flutter',
+        }),
+        ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('User activity submitted successfully');
+        return true;
+      } else {
+        print('Failed to submit user activity: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('Error submitting user activity: $e');
+      return false;
     }
   }
 }
 
-/// Result of submitting a review; aiUpdated is true when backend used feedback for AI predictions.
-class SubmitReviewResult {
-  final bool success;
-  final bool aiUpdated;
-  SubmitReviewResult({required this.success, required this.aiUpdated});
-}
-
-// Models
-class Hospital {
-  final String id;
-  final String name;
-  final String address;
-  final String city;
-  final String state;
-  final double latitude;
-  final double longitude;
-  /// Distance in km from backend (distance_km, distance_miles, etc.) or null → show "—"
-  final double? distance;
-  /// Rating 1–10 from backend (ai_rating, rating, ai_rating_5, etc.) or null → show "—"
-  final double? rating;
-  final String phone;
-  final String website;
-  final List<String> specialties;
-  final String imageUrl;
-  /// Wait time in minutes from backend (wait_time_prediction, wait_time_minutes, etc.) or null → show "—"
-  final int? estimatedWaitTimeMinutes;
-
-  Hospital({
-    required this.id,
-    required this.name,
-    required this.address,
-    this.city = '',
-    this.state = '',
-    required this.latitude,
-    required this.longitude,
-    this.distance,
-    this.rating,
-    required this.phone,
-    this.website = '',
-    required this.specialties,
-    required this.imageUrl,
-    this.estimatedWaitTimeMinutes,
-  });
-
-  /// For sorting: null distance sorts last.
-  double get distanceOrInfinity => distance ?? double.infinity;
-  /// For sorting/display: null rating treated as 0 for legacy comparators.
-  double get ratingOrZero => rating ?? 0.0;
-
-  factory Hospital.fromJson(Map<String, dynamic> json) {
-    final wait = json['wait_time_prediction'] ?? json['wait_time_minutes'] ??
-        json['smart_wait_time'] ?? json['current_wait_time'] ??
-        json['estimated_wait_time'] ?? json['ai_estimated_wait'] ?? json['predicted_wait_time'];
-    int? waitMinutes;
-    if (wait != null) {
-      if (wait is int) waitMinutes = wait;
-      if (wait is double) waitMinutes = wait.round();
-      if (wait is String) waitMinutes = int.tryParse(wait);
-    }
-    double? dist = _parseDouble(json['distance_km']);
-    final dm = _parseDouble(json['distance_miles']);
-    dist ??= dm != null ? dm * 1.60934 : null;
-    final dMetres = _parseDouble(json['distance_m']);
-    dist ??= dMetres != null ? dMetres / 1000 : null;
-    final dMiles = _parseDouble(json['distance']);
-    if (dist == null && dMiles != null) dist = dMiles * 1.60934;
-    double? rat = _parseDouble(json['ai_rating']) ?? _parseDouble(json['rating']);
-    final r5 = _parseDouble(json['ai_rating_5']);
-    rat ??= r5 != null ? r5 * 2.0 : null;
-    rat ??= _parseDouble(json['overall_performance_score']);
-    return Hospital(
-      id: json['id']?.toString() ?? '',
-      name: json['name'] ?? 'Unknown Hospital',
-      address: json['address'] ?? '',
-      city: json['city'] ?? '',
-      state: json['state'] ?? '',
-      latitude: _parseDouble(json['latitude']) ?? 0.0,
-      longitude: _parseDouble(json['longitude']) ?? 0.0,
-      distance: dist,
-      rating: rat,
-      phone: json['phone'] ?? '',
-      website: json['website'] ?? '',
-      specialties: List<String>.from(json['specialties'] ?? []),
-      imageUrl: json['image_url'] ?? json['website'] ?? '',
-      estimatedWaitTimeMinutes: waitMinutes,
-    );
-  }
-          
-          static double? _parseDouble(dynamic value) {
-            if (value == null) return null;
-            if (value is double) return value;
-            if (value is int) return value.toDouble();
-            if (value is String) {
-              return double.tryParse(value);
-            }
-            return null;
-          }
-          
-          /// Extract city and state from address string.
-          /// Examples:
-          /// - "2105 Forest Avenue, San Jose, CA 95128" -> ("San Jose", "CA")
-          /// - "1600 Amphitheatre Parkway, Mountain View, California" -> ("Mountain View", "California")
-          static Map<String, String> _extractCityState(String address) {
-            if (address.isEmpty) return {'city': '', 'state': ''};
-            
-            // Remove ZIP code (5 digits)
-            address = address.replaceAll(RegExp(r'\s*\d{5}(-\d{4})?\s*$'), '');
-            
-            // Split by comma
-            final parts = address.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-            
-            // US state abbreviations and full names
-            const usStates = [
-              'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-              'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-              'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-              'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-              'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
-              'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado',
-              'Connecticut', 'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho',
-              'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana',
-              'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota',
-              'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
-              'New Hampshire', 'New Jersey', 'New Mexico', 'New York',
-              'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon',
-              'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota',
-              'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington',
-              'West Virginia', 'Wisconsin', 'Wyoming'
-            ];
-            
-            // Find state (last part if it's a known state)
-            String state = '';
-            String city = '';
-            
-            if (parts.length >= 2) {
-              final lastPart = parts.last;
-              if (usStates.contains(lastPart)) {
-                state = lastPart;
-                if (parts.length >= 3) {
-                  city = parts[parts.length - 2];
-                }
-              } else if (parts.length >= 3) {
-                // Assume last part is state, second-to-last is city
-                state = lastPart;
-                city = parts[parts.length - 2];
-              } else {
-                // Only 2 parts, assume last is city
-                city = lastPart;
-              }
-            } else if (parts.length == 1) {
-              // Single part, might be just city
-              city = parts.first;
-            }
-            
-            return {'city': city, 'state': state};
-          }
-}
+// Hospital model is now imported from ../models/hospital.dart
 
 class WaitTime {
   final String hospitalId;

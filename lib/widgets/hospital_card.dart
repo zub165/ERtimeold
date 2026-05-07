@@ -243,7 +243,7 @@ class HospitalCard extends StatelessWidget {
                         Row(
                           children: [
                             RatingBarIndicator(
-                              rating: hospital.rating,
+                              rating: hospital.rating ?? 0,
                               itemBuilder: (context, index) => Icon(
                                 Icons.star,
                                 color: Colors.amber,
@@ -253,7 +253,9 @@ class HospitalCard extends StatelessWidget {
                             ),
                             SizedBox(width: 8),
                             Text(
-                              hospital.rating.toStringAsFixed(1),
+                              hospital.rating != null
+                                  ? hospital.rating!.toStringAsFixed(1)
+                                  : 'No rating',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
@@ -373,10 +375,10 @@ class HospitalCard extends StatelessWidget {
   }
   
   Color _getWaitTimeColor() {
-    // This would normally use real wait time data
-    // For now, using a mock wait time based on rating
-    if (hospital.rating > 4.0) return Colors.green;
-    if (hospital.rating > 3.0) return Colors.orange;
+    final wt = hospital.waitTimeMinutes;
+    if (wt == null || wt <= 0) return Colors.grey;
+    if (wt <= 15) return Colors.green;
+    if (wt <= 45) return Colors.orange;
     return Colors.red;
   }
   
@@ -385,12 +387,7 @@ class HospitalCard extends StatelessWidget {
     if (wt != null && wt > 0) {
       return '$wt min wait (est.)';
     }
-    // Fallback mock wait time calculation based on rating and distance
-    final baseWaitTime = 30.0;
-    final ratingFactor = (5.0 - hospital.rating) * 10;
-    final distanceFactor = hospital.distance * 2;
-    final mockWaitTime = (baseWaitTime + ratingFactor - distanceFactor).round().clamp(5, 120);
-    return 'Est. $mockWaitTime min wait';
+    return 'Wait time unavailable';
   }
   
   void _showHospitalDetails(BuildContext context) {
