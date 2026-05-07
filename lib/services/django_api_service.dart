@@ -61,7 +61,16 @@ class DjangoApiService {
       if (response.statusCode != 200) return null;
       final decoded = json.decode(response.body);
       if (decoded is Map<String, dynamic>) {
-        final v = decoded['predicted_wait_minutes'] ??
+        // Backend may wrap payload in { status, data: { ... } }
+        final Map<String, dynamic> payload =
+            (decoded['data'] is Map<String, dynamic>)
+                ? (decoded['data'] as Map<String, dynamic>)
+                : decoded;
+        final v = payload['predicted_wait_minutes'] ??
+            payload['wait_time_minutes'] ??
+            payload['predicted_wait_time_minutes'] ??
+            // Fallbacks if backend still sends fields at top-level
+            decoded['predicted_wait_minutes'] ??
             decoded['wait_time_minutes'] ??
             decoded['predicted_wait_time_minutes'];
         if (v is int) return v;
