@@ -120,6 +120,9 @@ class HospitalCard extends StatelessWidget {
     final isFav = context.select<HospitalProvider, bool>(
       (p) => p.isFavorite(hospital.id),
     );
+    final predictedWaitMinutes = context.select<HospitalProvider, int?>(
+      (p) => p.getWaitTime(hospital.id)?.currentWaitTime,
+    );
     return Card(
       margin: EdgeInsets.only(bottom: 15),
       elevation: 5,
@@ -296,10 +299,10 @@ class HospitalCard extends StatelessWidget {
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: _getWaitTimeColor().withOpacity(0.1),
+                  color: _getWaitTimeColor(predictedWaitMinutes).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: _getWaitTimeColor(),
+                    color: _getWaitTimeColor(predictedWaitMinutes),
                     width: 1,
                   ),
                 ),
@@ -309,15 +312,15 @@ class HospitalCard extends StatelessWidget {
                     Icon(
                       Icons.access_time,
                       size: 16,
-                      color: _getWaitTimeColor(),
+                      color: _getWaitTimeColor(predictedWaitMinutes),
                     ),
                     SizedBox(width: 6),
                     Text(
-                      _getWaitTimeText(),
+                      _getWaitTimeText(predictedWaitMinutes),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: _getWaitTimeColor(),
+                        color: _getWaitTimeColor(predictedWaitMinutes),
                       ),
                     ),
                   ],
@@ -374,18 +377,22 @@ class HospitalCard extends StatelessWidget {
     );
   }
   
-  Color _getWaitTimeColor() {
-    final wt = hospital.waitTimeMinutes;
+  Color _getWaitTimeColor(int? predictedWaitMinutes) {
+    final wt = (hospital.waitTimeMinutes != null && hospital.waitTimeMinutes! > 0)
+        ? hospital.waitTimeMinutes
+        : predictedWaitMinutes;
     if (wt == null || wt <= 0) return Colors.grey;
     if (wt <= 15) return Colors.green;
     if (wt <= 45) return Colors.orange;
     return Colors.red;
   }
   
-  String _getWaitTimeText() {
-    final wt = hospital.waitTimeMinutes;
+  String _getWaitTimeText(int? predictedWaitMinutes) {
+    final wt = (hospital.waitTimeMinutes != null && hospital.waitTimeMinutes! > 0)
+        ? hospital.waitTimeMinutes
+        : predictedWaitMinutes;
     if (wt != null && wt > 0) {
-      return '$wt min wait (est.)';
+      return '$wt min wait';
     }
     return 'Wait time unavailable';
   }

@@ -66,6 +66,26 @@ class HospitalProvider with ChangeNotifier {
     _waitTimes[hospitalId] = waitTime;
     notifyListeners();
   }
+
+  /// Prefetch predicted wait times (smart-wait-time) for current hospitals.
+  /// This avoids showing "unavailable" when backend can compute a prediction.
+  Future<void> prefetchSmartWaitTimes({int maxHospitals = 10}) async {
+    final api = DjangoApiService();
+    final targets = _hospitals.take(maxHospitals).toList();
+    for (final h in targets) {
+      if (_waitTimes.containsKey(h.id)) continue;
+      final minutes = await api.getSmartWaitTimeMinutes(h.id);
+      if (minutes == null || minutes <= 0) continue;
+      _waitTimes[h.id] = WaitTime(
+        hospitalId: h.id,
+        currentWaitTime: minutes,
+        averageWaitTime: minutes,
+        lastUpdated: DateTime.now().toIso8601String(),
+        status: 'predicted',
+      );
+      notifyListeners();
+    }
+  }
   
   WaitTime? getWaitTime(String hospitalId) {
     return _waitTimes[hospitalId];
