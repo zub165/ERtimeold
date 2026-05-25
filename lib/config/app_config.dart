@@ -2,8 +2,61 @@ class AppConfig {
   // App Information
   static const String appName = 'ER Wait Time';
   static const String packageName = 'com.easytechnologiez.ERTime';
-  static const String version = '5.0.10';
-  static const int versionCode = 59;
+  static const String version = '5.1.6';
+  static const int versionCode = 73;
+
+  /// Free hospital searches before premium subscription is required (iOS + Android).
+  static const int freeSearchLimit = 30;
+
+  /// Same product ID in Google Play Console and App Store Connect ($3.99/month).
+  ///
+  /// **Google Play:** Monetize → Subscriptions → Create subscription
+  /// `er_premium_monthly` → base plan $3.99/month → activate.
+  ///
+  /// **App Store Connect:** Subscriptions → group (e.g. ER Premium) →
+  /// `er_premium_monthly` → $3.99/month → submit with app version.
+  static const String premiumMonthlyProductId = 'er_premium_monthly';
+  static const String premiumMonthlyPriceHint = '\$3.99';
+
+  /// Legal / subscription management (required for App Store & Google Play).
+  ///
+  /// **App Store Connect (required for auto-renewable subscriptions):**
+  /// 1. App Information → Privacy Policy URL → [privacyPolicyUrl]
+  /// 2. App Description must include a line with [termsOfUseEulaUrl] (or use
+  ///    [appleStandardEulaUrl] if you rely on Apple's standard EULA only).
+  /// 3. Or upload a custom EULA under App Information → License Agreement.
+  static const String privacyPolicyUrl = 'https://api.mywaitime.com/privacy-policy/';
+  static const String termsOfServiceUrl = 'https://api.mywaitime.com/terms/';
+
+  /// Same as [termsOfServiceUrl] — label as "Terms of Use (EULA)" for Apple review.
+  static const String termsOfUseEulaUrl = termsOfServiceUrl;
+
+  /// Apple's standard licensed-application EULA (if you do not use a custom EULA).
+  static const String appleStandardEulaUrl =
+      'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+  static const String privacyContactEmail = 'privacy@mywaittime.com';
+  static const String appleManageSubscriptionsUrl =
+      'https://apps.apple.com/account/subscriptions';
+  static const String googlePlayManageSubscriptionsUrl =
+      'https://play.google.com/store/account/subscriptions';
+
+  /// Mailto links for data-rights requests (API POST endpoints are not browser pages).
+  static String get accountDeletionRequestMailto => _mailto(
+        subject: 'Account Deletion Request - ER Wait Time',
+        body:
+            'Please delete my account and all associated personal data.\n\n'
+            'Registered email in app:\n',
+      );
+
+  static String get dataExportRequestMailto => _mailto(
+        subject: 'Data Export Request - ER Wait Time',
+        body:
+            'Please send me a copy of my personal data held by ER Wait Time.\n\n'
+            'Registered email in app:\n',
+      );
+
+  static String _mailto({required String subject, required String body}) =>
+      'mailto:$privacyContactEmail?subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}';
   
   // Map API Keys - Retrieved dynamically from Django backend or user input
   static String? googleMapsApiKey;
@@ -35,7 +88,7 @@ class AppConfig {
   static const int minSearchRadius = 1;
   
   // Contact Information
-  static const String supportEmail = 'support@easytechnologiez.com';
+  static const String supportEmail = 'zub165@yahoo.com';
   
   // Privacy Policy Text (from existing Android project)
   static const String privacyPolicyText = '''
@@ -55,6 +108,6 @@ THIRD-PARTY SERVICES:
 • Google Maps: Used to display maps and location information according to Google's privacy policy.
 
 CONTACT:
-For questions about privacy, contact us at support@easytechnologiez.com
+For questions about privacy, contact us at zub165@yahoo.com
   ''';
 }
