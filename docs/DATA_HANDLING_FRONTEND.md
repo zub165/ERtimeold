@@ -81,7 +81,8 @@ This document describes data flow, storage, and backend sync in the ER Time Flut
 | Auth state + persistence | `lib/providers/auth_provider.dart` |
 | API keys + map provider persistence | `lib/services/api_key_manager.dart` |
 | Backend API (search, feedback, auth) | `lib/services/django_api_service.dart` |
-| App constants, version | `lib/config/app_config.dart` |
+| App constants, version, subscription IDs | `lib/config/app_config.dart` |
+| In-app subscription ($3.99/mo after 30 searches) | `lib/services/billing_service.dart`, `lib/providers/subscription_provider.dart` |
 | Splash, load storage | `lib/screens/splash_screen.dart` |
 | Search, list UI | `lib/screens/main_screen.dart` |
 | Review + ER time submit | `lib/screens/hospital_detail_screen.dart` |
